@@ -261,18 +261,24 @@ func main() {
 		panic(errors.New("use between 16 and 64 sha256 characters"))
 	}
 
-	defaultTTL, err := time.ParseDuration(defaultTTLStr)
+	duration, err := time.ParseDuration(defaultTTLStr)
 	if err != nil {
 		panic(errors.New("invalid default TTL"))
 	}
-	minTTL, err := time.ParseDuration(minTTLStr)
+	defaultTTL = duration
+
+	duration, err = time.ParseDuration(minTTLStr)
 	if err != nil {
 		panic(errors.New("invalid minimal TTL"))
 	}
-	maxTTL, err := time.ParseDuration(maxTTLStr)
+	minTTL = duration
+
+	duration, err = time.ParseDuration(maxTTLStr)
 	if err != nil {
 		panic(errors.New("invalid maximal TTL"))
 	}
+	maxTTL = duration
+
 	if minTTL < 5*time.Second {
 		panic(errors.New("minimal TTL cannot be less than 5 seconds"))
 	}
