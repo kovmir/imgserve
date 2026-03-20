@@ -158,8 +158,11 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//fmt.Fprintln(w, url)
-	http.Redirect(w, r, url, http.StatusSeeOther)
+	if r.FormValue("redirect") == "true" {
+		http.Redirect(w, r, url, http.StatusSeeOther)
+	} else {
+		fmt.Fprintln(w, url)
+	}
 }
 
 // Serve images.

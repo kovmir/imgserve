@@ -8,6 +8,7 @@
     <form method="POST" action="/upload" enctype="multipart/form-data">
       <p><input type="file" name="image" accept="image/*" required></p>
       <p>TTL: <input type="text" name="ttl" value="72h" required></p>
+      <input type="hidden" name="redirect" value="true">
       <p><button type="submit">Upload</button></p>
     </form>
   </body>
