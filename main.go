@@ -148,7 +148,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//fmt.Fprintln(w, url)
-	http.Redirect(w, r, url, http.StatusFound)
+	http.Redirect(w, r, url, http.StatusSeeOther)
 }
 
 // Serve images.
