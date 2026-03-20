@@ -16,24 +16,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "embed"
 )
 
-const uploadFormHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>imgserv</title>
-  <meta charset="utf-8">
-</head>
-<body>
-  <form method="POST" action="/upload" enctype="multipart/form-data">
-    <p><input type="file" name="image" accept="image/*" required></p>
-    <p>TTL: <input type="text" name="ttl" value="72h" required></p>
-    <p><button type="submit">Upload</button></p>
-  </form>
-</body>
-</html>
-`
+//go:embed upload_form.html
+var uploadFormHTML string
 
 const linkTimeDelim = "_"
 
