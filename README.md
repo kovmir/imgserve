@@ -5,13 +5,15 @@ Minimalist image hosting server.
 * No dependencies
 * No database
 * Image TTL
-* Deduplication
+* Image deduplication
 
 # PREVIEW
 
 ![screenshot](screenshot.png)
 
 # INSTALL
+
+Install [Go](https://go.dev/), then:
 
 ```bash
 git clone https://git.sr.ht/~kovmir/imgserve
@@ -30,4 +32,7 @@ Upload images via web UI at `http://localhost:8077/` or `curl`:
 
 ```bash
 curl -X POST -F "image=@/path/to/image.jpg" http://localhost:8077/upload
+curl -X POST -F "image=@/path/to/image.jpg" -F "ttl=24h" http://localhost:8077/upload
 ```
+
+TTL format is documented [here](https://pkg.go.dev/time#ParseDuration).
