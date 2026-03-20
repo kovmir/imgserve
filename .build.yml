@@ -1,0 +1,5 @@
+image: alpine/edge
+packages:
+  - go
+tasks:
+  - build: go build -C imgserve
