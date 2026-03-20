@@ -34,6 +34,8 @@ var (
 	urlProto   string
 	urlHost    string
 	maxSize    int64
+	minTTL     string
+	maxTTL     string
 )
 
 // Valid paths have no subdirectories.
@@ -227,6 +229,8 @@ func init() {
 	flag.Int64Var(&maxSize, "maxsize", 32<<20, "maximal uploaded image size in bytes")
 	flag.IntVar(&nShaChars, "sumlen", 32, "number of sha256 characters used for image file names")
 	flag.StringVar(&defaultTTL, "ttl", "72h", "default image TTL")
+	flag.StringVar(&minTTL, "minttl", "1h", "minimal image TTL")
+	flag.StringVar(&maxTTL, "maxttl", "168h", "maximal image TTL")
 	flag.StringVar(&listenAddr, "addr", ":8077", "server listen address")
 	flag.StringVar(&uploadDir, "dir", "./uploads", "uploaded images directory")
 	flag.StringVar(&urlHost, "host", "localhost:8077", "hostname in the responce URL")
@@ -239,11 +243,30 @@ func main() {
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		panic(err)
 	}
-	if _, err := time.ParseDuration(defaultTTL); err != nil {
-		panic(errors.New("invalid default TTL"))
-	}
 	if nShaChars < 16 || nShaChars > 64 {
 		panic(errors.New("use between 16 and 64 sha256 characters"))
+	}
+
+	parsedDefTTL, err := time.ParseDuration(defaultTTL)
+	if err != nil {
+		panic(errors.New("invalid default TTL"))
+	}
+	parsedMaxTTL, err := time.ParseDuration(minTTL)
+	if err != nil {
+		panic(errors.New("invalid minimal TTL"))
+	}
+	parsedMinTTL, err := time.ParseDuration(maxTTL)
+	if err != nil {
+		panic(errors.New("invalid maximal TTL"))
+	}
+	if parsedMinTTL < 5*time.Second {
+		panic(errors.New("minimal TTL cannot be less than 5 seconds"))
+	}
+	if parsedMaxTTL <= parsedMinTTL {
+		panic(errors.New("maximal TTL must be greater than minimal"))
+	}
+	if parsedDefTTL < parsedMinTTL || parsedDefTTL > parsedMaxTTL {
+		panic(errors.New("default TTL must be within minimal and maximal"))
 	}
 
 	http.HandleFunc("/upload", handleUpload)
