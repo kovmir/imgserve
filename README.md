@@ -22,6 +22,7 @@ go install # Installs in ~/go/bin by default.
 # USAGE
 
 ```bash
+imgserve -h # To see all CLI options.
 imgserve # Simply run the executable to start the server.
 ```
 
