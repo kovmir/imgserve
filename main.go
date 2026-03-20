@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "embed"
 )
 
 //go:embed upload_form.html
