@@ -16,11 +16,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 )
 
 //go:embed upload_form.html
 var uploadFormHTML string
+var uploadFormTmpl *template.Template
 
 const linkTimeDelim = "_"
 
@@ -181,7 +183,15 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 
 	if reqPath == "/" {
 		w.Header().Set("Content-Type", "text/html; charest=utf-8")
-		fmt.Fprint(w, uploadFormHTML)
+		uploadFormTmpl.Execute(w, struct {
+			DefaultTTL string
+			MaxTTL     string
+			MinTTL     string
+		}{
+			defaultTTLStr,
+			maxTTLStr,
+			minTTLStr,
+		})
 		return
 	}
 
@@ -288,6 +298,9 @@ func main() {
 	if defaultTTL > maxTTL || defaultTTL < minTTL {
 		panic(errors.New("default TTL must be within the minimal and maximal TTLs"))
 	}
+
+	t := template.Must(template.New("upload-form").Parse(uploadFormHTML))
+	uploadFormTmpl = t
 
 	http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/", handleView)
