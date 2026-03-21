@@ -13,6 +13,8 @@ Minimalist image hosting server.
 
 ![screenshot](screenshot.png)
 
+*Stylish web UI following modern design guidelines.*
+
 # INSTALL
 
 Install [Go](https://go.dev/), then:
