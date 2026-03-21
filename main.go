@@ -296,7 +296,7 @@ func validateCLIArgs() error {
 func init() {
 	flag.BoolVar(&runGC, "del", true, "delete images past the expiration time?")
 	flag.Int64Var(&maxSize, "maxsize", 32<<20, "maximal uploaded image size in bytes")
-	flag.IntVar(&nShaChars, "sumlen", 32, "number of sha256 characters used for image file names")
+	flag.IntVar(&nShaChars, "sumlen", 16, "number of sha256 characters used for image file names")
 	flag.StringVar(&defaultTTLStr, "ttl", "72h", "default image TTL")
 	flag.StringVar(&minTTLStr, "minttl", "1h", "minimal image TTL")
 	flag.StringVar(&maxTTLStr, "maxttl", "168h", "maximal image TTL")
