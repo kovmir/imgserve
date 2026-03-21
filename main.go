@@ -62,14 +62,24 @@ func isValidPath(path string) bool {
 // Save the image and create a link pointing to it;
 // the link holds expiration timestamp in the name.
 func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, error) {
-	if imgExt == "" { // Infer file type if not provided.
-		contentType := http.DetectContentType(imgData)
+	allowedTypes := map[string]bool{
+		"image/jpeg": true,
+		"image/png":  true,
+		"image/gif":  true,
+		"image/webp": true,
+		"image/bmp":  true,
+		"image/tiff": true,
+		"image/avif": true,
+	}
+
+	contentType := http.DetectContentType(imgData)
+	if !allowedTypes[contentType] {
+		return "", errors.New("invalid image type")
+	}
+
+	if imgExt == "" {
 		exts, _ := mime.ExtensionsByType(contentType)
-		if len(exts) > 0 {
-			imgExt = exts[0]
-		} else {
-			imgExt = ".bin"
-		}
+		imgExt = exts[0]
 	}
 
 	imgHash := fmt.Sprintf("%x", sha256.Sum256(imgData))[:nShaChars]
@@ -159,7 +169,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	io.Copy(&buf, file)
 	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
 	if err != nil {
-		http.Error(w, "Server error", http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
