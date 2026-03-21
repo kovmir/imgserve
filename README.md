@@ -22,7 +22,7 @@ Install [Go](https://go.dev/), then:
 ```bash
 git clone https://git.sr.ht/~kovmir/imgserve
 cd imgserve
-go install # Installs in ~/go/bin by default.
+go build
 ```
 
 # USAGE
