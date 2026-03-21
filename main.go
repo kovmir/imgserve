@@ -171,7 +171,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		log.Println(err, r.RemoteAddr)
+		log.Println(err)
 		return
 	}
 
