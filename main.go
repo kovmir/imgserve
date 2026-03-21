@@ -24,6 +24,9 @@ import (
 var uploadFormHTML string
 var uploadFormTmpl *template.Template
 
+//go:embed favicon.ico
+var faviconData []byte
+
 const linkTimeDelim = "_"
 
 var (
@@ -196,7 +199,9 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if reqPath == "/favicon.ico" {
-		http.NotFound(w, r)
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=86400") // Cache 1 day
+		w.Write(faviconData)
 		return
 	}
 

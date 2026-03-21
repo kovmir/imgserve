@@ -1,16 +1,106 @@
 <!DOCTYPE html>
-<html>
-  <head>
+<html lang="en">
+<head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width">
-    <title>imgserv</title>
-  </head>
-  <body>
-    <form method="POST" action="/upload" enctype="multipart/form-data">
-      <p><input type="file" name="image" accept="image/*" required></p>
-      <p>TTL: <input type="text" name="ttl" placeholder="{{.DefaultTTL}}"> [{{.MinTTL}}, {{.MaxTTL}}]</p>
-      <input type="hidden" name="redirect" value="true">
-      <p><button type="submit">Upload</button></p>
-    </form>
-  </body>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico"/>
+    <title>Image Upload - imgserv</title>
+    <style>
+        body {
+            font-family: serif;
+            background-color: #ffe4b5;
+            color: #000;
+            margin: 50px auto;
+            max-width: 450px;
+            padding: 3px;
+            border: 2px solid #eeb700;
+            box-shadow: 4px 4px 0 #414141;
+        }
+        h1 {
+            background-color: #2b5cb5;
+            color: #fff;
+            text-align: center;
+            margin: 0;
+            padding: 5px;
+            font-size: 1.25rem;
+            border: 2px solid #fff;
+            border-style: inset;
+        }
+        p {
+            margin: 12px 0;
+            font-size: 1rem;
+        }
+        label {
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        input[type="text"] {
+            width: 80px;
+            background-color: #fff;
+            border: 2px solid #000;
+            border-style: inset;
+            padding: 2px;
+        }
+        button {
+            display: block;
+            width: 100px;
+            margin: 20px auto 0;
+            padding: 4px 0;
+            background-color: #2196f3;
+            border: 2px solid #fff;
+            border-style: outset;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            color: #fff;
+        }
+        button:active {
+            border-style: inset;
+        }
+        #ttl {
+            font-size: 0.8rem;
+            margin-left: 4px;
+        }
+        #window-body {
+            margin-top: 2px;
+            padding: 15px;
+            border: 2px solid #fff;
+            border-style: inset;
+            background-color: #e0f7fa;
+        }
+        #window-footer {
+            margin-top: 15px;
+            padding: 4px 8px;
+            border: 2px solid #fff;
+            border-style: inset;
+            background-color: #81d4fa;
+            text-align: center;
+            font-size: 0.75rem;
+        }
+        a { color: #004c6d; }
+    </style>
+</head>
+<body>
+    <h1>Image Upload</h1>
+
+    <div id="window-body">
+        <form method="POST" action="/upload" enctype="multipart/form-data">
+            <p>
+            <label>Image:</label>
+            <input type="file" name="image" accept="image/*" required>
+            </p>
+            <p>
+            <label>TTL:</label>
+            <input type="text" name="ttl" placeholder="{{.DefaultTTL}}">
+            <span id="ttl">[{{.MinTTL}}, {{.MaxTTL}}]</span>
+            </p>
+            <input type="hidden" name="redirect" value="true">
+            <button type="submit">Upload</button>
+        </form>
+
+        <div id="window-footer">
+            <a href="https://sr.ht/~kovmir/imgserve/">imgserve - sourcehut</a>
+        </div>
+    </div>
+</body>
 </html>
