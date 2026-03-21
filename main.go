@@ -248,6 +248,46 @@ func expiredGC() {
 	}
 }
 
+// Verify CLI arguments' validity.
+func validateCLIArgs() error {
+	if nShaChars < 16 || nShaChars > 64 {
+		return errors.New("use between 16 and 64 sha256 characters")
+	}
+
+	duration, err := time.ParseDuration(defaultTTLStr)
+	if err != nil {
+		return errors.New("invalid default TTL")
+	}
+	defaultTTL = duration
+	duration, err = time.ParseDuration(minTTLStr)
+	if err != nil {
+		return errors.New("invalid minimal TTL")
+	}
+	minTTL = duration
+	duration, err = time.ParseDuration(maxTTLStr)
+	if err != nil {
+		return errors.New("invalid maximal TTL")
+	}
+	maxTTL = duration
+	if minTTL < 5*time.Second {
+		return errors.New("minimal TTL cannot be less than 5 seconds")
+	}
+	if minTTL >= maxTTL {
+		return errors.New("maximal TTL must be greater than minimal")
+	}
+	if defaultTTL > maxTTL || defaultTTL < minTTL {
+		return errors.New("default TTL must be within the minimal and maximal TTLs")
+	}
+
+	t, err := template.New("upload-form").Parse(uploadFormHTML)
+	if err != nil {
+		return err
+	}
+	uploadFormTmpl = t
+
+	return nil
+}
+
 func init() {
 	flag.BoolVar(&runGC, "del", true, "delete images past the expiration time?")
 	flag.Int64Var(&maxSize, "maxsize", 32<<20, "maximal uploaded image size in bytes")
@@ -267,40 +307,10 @@ func main() {
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		panic(err)
 	}
-	if nShaChars < 16 || nShaChars > 64 {
-		panic(errors.New("use between 16 and 64 sha256 characters"))
-	}
 
-	duration, err := time.ParseDuration(defaultTTLStr)
-	if err != nil {
-		panic(errors.New("invalid default TTL"))
+	if err := validateCLIArgs(); err != nil {
+		panic(err)
 	}
-	defaultTTL = duration
-
-	duration, err = time.ParseDuration(minTTLStr)
-	if err != nil {
-		panic(errors.New("invalid minimal TTL"))
-	}
-	minTTL = duration
-
-	duration, err = time.ParseDuration(maxTTLStr)
-	if err != nil {
-		panic(errors.New("invalid maximal TTL"))
-	}
-	maxTTL = duration
-
-	if minTTL < 5*time.Second {
-		panic(errors.New("minimal TTL cannot be less than 5 seconds"))
-	}
-	if minTTL >= maxTTL {
-		panic(errors.New("maximal TTL must be greater than minimal"))
-	}
-	if defaultTTL > maxTTL || defaultTTL < minTTL {
-		panic(errors.New("default TTL must be within the minimal and maximal TTLs"))
-	}
-
-	t := template.Must(template.New("upload-form").Parse(uploadFormHTML))
-	uploadFormTmpl = t
 
 	http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/", handleView)
