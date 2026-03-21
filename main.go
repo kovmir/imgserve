@@ -137,6 +137,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
 		return
 	}
+	log.Println("upload request", r.RemoteAddr)
 
 	if err := r.ParseMultipartForm(maxSize); err != nil {
 		http.Error(w, "Form is too big or corrupt.", http.StatusBadRequest)
@@ -170,6 +171,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		log.Println(err, r.RemoteAddr)
 		return
 	}
 
@@ -215,8 +217,9 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Println(reqPath[1:], "requested by", r.RemoteAddr)
+
 	imgPath := filepath.Join(uploadDir, reqPath)
-	log.Println(reqPath[1:], "requested")
 	if _, err := os.Stat(imgPath); errors.Is(err, os.ErrNotExist) {
 		http.NotFound(w, r)
 		return
