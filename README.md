@@ -22,7 +22,8 @@ Install [Go](https://go.dev/), then:
 ```bash
 git clone https://git.sr.ht/~kovmir/imgserve
 cd imgserve
-go build # The binary appears in the same directory.
+make
+sudo make install
 ```
 
 # USAGE

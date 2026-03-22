@@ -46,6 +46,8 @@ var (
 	defaultTTL time.Duration
 	minTTL     time.Duration
 	maxTTL     time.Duration
+
+	gitVersion string
 )
 
 // Valid paths have no subdirectories.
@@ -202,10 +204,12 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 			DefaultTTL string
 			MaxTTL     string
 			MinTTL     string
+			GitVersion string
 		}{
 			defaultTTLStr,
 			maxTTLStr,
 			minTTLStr,
+			gitVersion,
 		})
 		return
 	}
