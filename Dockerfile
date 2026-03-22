@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY . .
 
+RUN go version
 RUN CGO_ENABLED='0' go build -o imgserv .
 
 FROM docker.io/library/alpine:latest AS runtime
