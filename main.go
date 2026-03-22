@@ -139,7 +139,12 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
 		return
 	}
-	log.Println("upload request", r.RemoteAddr)
+
+	realIP := r.Header.Get("X-Real-IP")
+	if realIP == "" {
+		realIP = r.RemoteAddr
+	}
+	log.Println("upload from", realIP)
 
 	if err := r.ParseMultipartForm(maxSize); err != nil {
 		http.Error(w, "Form is too big or corrupt.", http.StatusBadRequest)
@@ -191,7 +196,13 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	realIP := r.Header.Get("X-Real-IP")
+	if realIP == "" {
+		realIP = r.RemoteAddr
+	}
+
 	reqPath := r.URL.Path
+	log.Println(reqPath, "requested by", realIP)
 
 	if !isValidPath(reqPath) {
 		http.NotFound(w, r)
@@ -220,8 +231,6 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		w.Write(faviconData)
 		return
 	}
-
-	log.Println(reqPath[1:], "requested by", r.RemoteAddr)
 
 	imgPath := filepath.Join(uploadDir, reqPath)
 	if _, err := os.Stat(imgPath); errors.Is(err, os.ErrNotExist) {
