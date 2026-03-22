@@ -6,7 +6,7 @@ Minimalist image hosting server.
 
 * No dependencies
 * No database
-* Image TTL
+* Image [TTL](https://en.wikipedia.org/wiki/Time_to_live)
 * Image deduplication
 
 # PREVIEW
@@ -22,7 +22,7 @@ Install [Go](https://go.dev/), then:
 ```bash
 git clone https://git.sr.ht/~kovmir/imgserve
 cd imgserve
-go build
+go build # The binary appears in the same directory.
 ```
 
 # USAGE
