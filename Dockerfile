@@ -4,8 +4,11 @@ WORKDIR /app
 
 COPY . .
 
+RUN apk upgrade
+RUN apk add make git
+
 RUN go version
-RUN CGO_ENABLED='0' go build -o imgserv .
+RUN make
 
 FROM docker.io/library/alpine:latest AS runtime
 
@@ -14,10 +17,10 @@ RUN apk upgrade
 RUN adduser -D -s /sbin/nologin appuser
 
 WORKDIR /home/appuser
-COPY --from=builder /app/imgserv .
+COPY --from=builder /app/imgserve .
 
-RUN chown appuser:appuser imgserv
-RUN chmod 755 imgserv
+RUN chown appuser:appuser imgserve
+RUN chmod 755 imgserve
 RUN mkdir /data
 RUN chown appuser:appuser /data
 
@@ -27,4 +30,4 @@ EXPOSE 8077
 
 VOLUME ["/data"]
 
-CMD ["./imgserv", "-dir", "/data"]
+CMD ["./imgserve", "-dir", "/data"]
