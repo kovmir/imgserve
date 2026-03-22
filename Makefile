@@ -1,8 +1,9 @@
 PROJECT = imgserve
-UPLOADS = uploads
+IMAGES = uploads
 VERSION = $(shell git describe --tags)
 CGO_ENABLED ?= 0
 
+PREFIX ?= /usr/local
 INSTALL ?= install
 
 build:
@@ -18,6 +19,6 @@ uninstall:
 	rmdir --ignore-fail-on-non-empty "$(DESTDIR)$(PREFIX)/bin"
 
 clean:
-	rm -rf ./$(UPLOADS) ./$(PROJECT)
+	rm -rf ./$(IMAGES) ./$(PROJECT)
 
 .PHONY: build install uninstall clean
