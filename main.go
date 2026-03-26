@@ -251,17 +251,20 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 // Returns a string with random ascii numbers/letters of the specified length.
 func randomID(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
-	seed := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[seed.Intn(len(letters))]
+		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
 }
 
 // Delete images past the expiration time.
 func expiredGC() {
-	files, _ := filepath.Glob(filepath.Join(uploadDir, "*"+linkTimeDelim+"*"))
+	files, err := filepath.Glob(filepath.Join(uploadDir, "*"+linkTimeDelim+"*"))
+	if err != nil {
+		log.Println(err)
+		return
+	}
 	for _, f := range files {
 		if info, err := os.Stat(f); err == nil {
 			linkName := info.Name()
@@ -328,8 +331,8 @@ func init() {
 	flag.StringVar(&maxTTLStr, "maxttl", "168h", "maximal image TTL")
 	flag.StringVar(&listenAddr, "addr", ":8077", "server listen address")
 	flag.StringVar(&uploadDir, "dir", "./uploads", "uploaded images directory")
-	flag.StringVar(&urlHost, "host", "localhost:8077", "hostname in the responce URL")
-	flag.StringVar(&urlProto, "proto", "http", "protocol in the responce URL")
+	flag.StringVar(&urlHost, "host", "localhost:8077", "hostname in the response URL")
+	flag.StringVar(&urlProto, "proto", "http", "protocol in the response URL")
 	flag.Uint64Var(&delayGC, "delay", 10, "expired image checker interval in seconds")
 	flag.Parse()
 }
