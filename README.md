@@ -6,6 +6,7 @@ Minimalist image hosting server.
 
 * No dependencies
 * No database
+* No JS required
 * Image [TTL](https://en.wikipedia.org/wiki/Time_to_live)
 * Image deduplication
 

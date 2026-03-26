@@ -87,7 +87,7 @@
         <form method="POST" action="/upload" enctype="multipart/form-data">
             <p>
             <label>Image:</label>
-            <input type="file" name="image" accept="image/*" required>
+            <input id="image-input" type="file" name="image" accept="image/*" required>
             </p>
             <p>
             <label>TTL:</label>
@@ -95,12 +95,44 @@
             <span id="ttl">[{{.MinTTL}}, {{.MaxTTL}}]</span>
             </p>
             <input type="hidden" name="redirect" value="true">
-            <button type="submit">Upload</button>
+            <button id="image-submit-btn" type="submit">Upload</button>
         </form>
 
         <div id="window-footer">
             <a href="https://sr.ht/~kovmir/imgserve/">imgserve {{.GitVersion}}</a>
         </div>
     </div>
+
+    <script>
+        // Hit Ctrl+V to paste clipboard image into the form.
+        document.addEventListener('paste', function(event) {
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            let blob = null;
+
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    blob = items[i].getAsFile();
+                    break;
+                }
+            }
+
+            if (blob !== null) {
+                const fileInput = document.getElementById('image-input');
+                const dataTransfer = new DataTransfer();
+                const file = new File([blob], 'clipboard.png', { type: blob.type });
+                dataTransfer.items.add(file);
+                fileInput.files = dataTransfer.files;
+                console.log('Image pasted form clipboard.');
+            }
+        });
+
+        // Hit Enter to submit the form.
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('image-submit-btn').click();
+            }
+        });
+    </script>
 </body>
 </html>
