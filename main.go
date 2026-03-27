@@ -285,6 +285,8 @@ func expiredGC() {
 			expiryTime := time.Unix(i, 0)
 
 			if time.Now().After(expiryTime) {
+				// Can delete an image while it is being sent,
+				// but it does not matter.
 				err := deleteImage(linkName)
 				if err != nil {
 					log.Println(err)
