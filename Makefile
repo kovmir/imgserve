@@ -10,6 +10,9 @@ build:
 	CGO_ENABLED="$(CGO_ENABLED)" \
 	    go build -ldflags "-X main.gitVersion=$(VERSION)" -o ./$(PROJECT) .
 
+fmt:
+	gofmt -w main.go
+
 install:
 	mkdir -p "$(DESTDIR)$(PREFIX)/bin"
 	$(INSTALL) ./$(PROJECT) "$(DESTDIR)$(PREFIX)/bin/$(PROJECT)"
