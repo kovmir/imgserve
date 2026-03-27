@@ -50,6 +50,20 @@ var (
 	gitVersion string
 )
 
+// os.WriteFile(...) with O_EXCL; for safety against concurrent writes.
+func writeFileExcl(name string, data []byte, perm os.FileMode) error {
+	// O_EXCL ensures atomic creation: fails if file exists.
+	f, err := os.OpenFile(name, os.O_EXCL|os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err1 := f.Close(); err1 != nil && err == nil {
+		err = err1
+	}
+	return err
+}
+
 // Valid paths have no subdirectories.
 func isValidPath(path string) bool {
 	// Split and filter empty parts
@@ -95,12 +109,10 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	}
 
 	// Save on disk.
-	//
-	// This bit is not threadsafe, but how likely is it that two different
-	// clients will upload the exact same file at exactly the same instant?
-	if err := os.WriteFile(imgPath, imgData, 0644); err != nil {
+	if err := writeFileExcl(imgPath, imgData, 0644); err != nil {
 		return "", err
 	}
+
 	// Create the symlink; it holds the image's expiration time.
 	// Aside from the expiration time, we append a random string
 	// to the link name to avoid naming collisions.
