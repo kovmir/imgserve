@@ -158,6 +158,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("upload from", realIP)
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 	if err := r.ParseMultipartForm(maxSize); err != nil {
 		http.Error(w, "Form is too big or corrupt.", http.StatusBadRequest)
 		return
