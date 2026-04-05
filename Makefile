@@ -1,6 +1,6 @@
 PROJECT := imgserve
 IMAGES := uploads
-GIT_VERSION := $(shell git describe --tags --always --dirty)
+GIT_VERSION = $(shell git describe --tags --always --dirty)
 CGO_ENABLED := 0
 
 PREFIX := /usr/local
