@@ -39,4 +39,4 @@ uninstall:
 clean:
 	rm -rf ./$(IMAGES) ./$(PROJECT)
 
-.PHONY: build install uninstall clean
+.PHONY: build container fmt install uninstall clean
