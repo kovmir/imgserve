@@ -8,25 +8,21 @@ WORKDIR /app
 
 COPY . .
 
-RUN apk upgrade
-RUN apk add make git
+RUN apk add --no-cache make
+RUN go version && make GIT_VERSION=$GIT_VERSION
 
-RUN go version
-RUN make GIT_VERSION=$GIT_VERSION
 
 FROM docker.io/library/alpine:latest AS runner
 
-RUN apk upgrade
-
-RUN adduser -D -s /sbin/nologin appuser
-
-WORKDIR /home/appuser
+WORKDIR /app
 COPY --from=builder /app/imgserve .
 
-RUN chown appuser:appuser imgserve
-RUN chmod 755 imgserve
-RUN mkdir /data
-RUN chown appuser:appuser /data
+RUN addgroup -S appuser && \
+    adduser -S -G appuser appuser
+RUN chown appuser:appuser imgserve && \
+    chmod 755 imgserve
+RUN mkdir /data && \
+    chown appuser:appuser /data
 
 USER appuser
 
