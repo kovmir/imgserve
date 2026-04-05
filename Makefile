@@ -1,5 +1,5 @@
 PROJECT := imgserve
-IMAGES := uploads
+UPLOADS_DIR := uploads
 GIT_VERSION = $(shell git describe --tags --always --dirty)
 CGO_ENABLED := 0
 
@@ -12,7 +12,7 @@ CONTAINER_ENGINE := docker
 # Use podman if exists.
 PODMAN_CHECK := $(shell command -v podman)
 ifneq ($(PODMAN_CHECK),)
-    CONTAINER_ENGINE := podman
+	CONTAINER_ENGINE := podman
 endif
 
 build:
@@ -37,6 +37,6 @@ uninstall:
 	rmdir --ignore-fail-on-non-empty "$(DESTDIR)$(PREFIX)/bin"
 
 clean:
-	rm -rf ./$(IMAGES) ./$(PROJECT)
+	rm -rf ./$(UPLOADS_DIR) ./$(PROJECT)
 
 .PHONY: build container fmt install uninstall clean

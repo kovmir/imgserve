@@ -1,27 +1,28 @@
-FROM docker.io/library/golang:alpine AS builder
+FROM docker.io/library/golang:1.25-alpine AS builder
 
-# Git repository is excluded from the container,
-# therefore pass version via CLI args.
-ARG GIT_VERSION="unknown"
+RUN apk add --no-cache make
 
 WORKDIR /app
 
 COPY . .
 
-RUN apk add --no-cache make
+# Git repository is excluded from the container,
+# therefore pass version via CLI args.
+ARG GIT_VERSION="unknown"
 RUN go version && make GIT_VERSION=$GIT_VERSION
 
 
-FROM docker.io/library/alpine:latest AS runner
+FROM docker.io/library/alpine:3.23 AS runner
 
 WORKDIR /app
 COPY --from=builder /app/imgserve .
 
+# Create the non-root user and set permissions.
 RUN addgroup -S appuser && \
-    adduser -S -G appuser appuser
-RUN chown appuser:appuser imgserve && \
-    chmod 755 imgserve
-RUN mkdir /data && \
+    adduser -S -G appuser appuser && \
+    chown appuser:appuser imgserve && \
+    chmod 755 imgserve && \
+    mkdir /data && \
     chown appuser:appuser /data
 
 USER appuser
