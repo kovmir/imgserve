@@ -14,7 +14,7 @@ RUN apk add make git
 RUN go version
 RUN make GIT_VERSION=$GIT_VERSION
 
-FROM docker.io/library/alpine:latest AS runtime
+FROM docker.io/library/alpine:latest AS runner
 
 RUN apk upgrade
 
