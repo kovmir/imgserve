@@ -1,5 +1,7 @@
 FROM docker.io/library/golang:alpine AS builder
 
+ARG GIT_VERSION="unknown"
+
 WORKDIR /app
 
 COPY . .
@@ -8,7 +10,7 @@ RUN apk upgrade
 RUN apk add make git
 
 RUN go version
-RUN make
+RUN make GIT_VERSION=$GIT_VERSION
 
 FROM docker.io/library/alpine:latest AS runtime
 
