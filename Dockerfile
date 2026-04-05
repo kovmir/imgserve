@@ -1,5 +1,7 @@
 FROM docker.io/library/golang:alpine AS builder
 
+# Git repository is excluded from the container,
+# therefore pass version via CLI args.
 ARG GIT_VERSION="unknown"
 
 WORKDIR /app

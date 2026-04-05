@@ -1,0 +1,10 @@
+.build.yml
+Dockerfile
+.dockerignore
+.git
+.gitignore
+imgserve
+LICENSE
+README.md
+screenshot.png
+uploads
