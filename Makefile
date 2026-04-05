@@ -17,7 +17,7 @@ endif
 
 build:
 	CGO_ENABLED="$(CGO_ENABLED)" \
-	    go build -ldflags "-X main.gitVersion=$(GIT_VERSION)" -o ./$(PROJECT) .
+	    go build -ldflags "-w -s -X main.gitVersion=$(GIT_VERSION)" -o ./$(PROJECT) .
 
 container:
 	$(CONTAINER_ENGINE) build \
