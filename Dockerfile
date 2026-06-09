@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.25-alpine AS builder
+FROM docker.io/library/golang:1.26.4-alpine AS builder
 
 RUN apk add --no-cache make
 
@@ -12,7 +12,7 @@ ARG GIT_VERSION="unknown"
 RUN go version && make GIT_VERSION=$GIT_VERSION
 
 
-FROM docker.io/library/alpine:3.23 AS runner
+FROM docker.io/library/alpine:3.23.4 AS runner
 
 WORKDIR /app
 COPY --from=builder /app/imgserve .
