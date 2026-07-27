@@ -26,7 +26,7 @@ import (
 
 //go:embed upload_form.html
 var uploadFormHTML string
-var uploadFormTmpl *template.Template
+var uploadForm *template.Template
 
 //go:embed favicon.ico
 var faviconData []byte
@@ -35,17 +35,17 @@ const linkTimeDelim = "_"
 
 var (
 	// Flags
-	runGC         bool
-	nShaChars     int
-	delayGC       uint64
-	listenAddr    string
-	defaultTTLStr string
-	uploadDir     string
-	urlProto      string
-	urlHost       string
-	maxSize       int64
-	minTTLStr     string
-	maxTTLStr     string
+	runGarbageCollector bool
+	nShaChars           int
+	delayGC             uint64
+	listenAddr          string
+	defaultTTLStr       string
+	uploadDir           string
+	urlProto            string
+	urlHost             string
+	maxSize             int64
+	minTTLStr           string
+	maxTTLStr           string
 
 	uploadRoot *os.Root
 
@@ -216,7 +216,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	// Serve upload form.
 	if reqPath == "/" {
 		w.Header().Set("Content-Type", "text/html; charest=utf-8")
-		uploadFormTmpl.Execute(w, struct {
+		err := uploadForm.Execute(w, struct {
 			DefaultTTL string
 			MaxTTL     string
 			MinTTL     string
@@ -227,6 +227,10 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 			minTTLStr,
 			gitVersion,
 		})
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -256,7 +260,7 @@ func randomID(n int) string {
 }
 
 // Delete images past the expiration time.
-func expiredGC() {
+func garbageCollectImages() {
 	entries, err := os.ReadDir(uploadDir)
 	if err != nil {
 		log.Println(err)
@@ -322,13 +326,13 @@ func validateCLIArgs() error {
 	if err != nil {
 		return err
 	}
-	uploadFormTmpl = t
+	uploadForm = t
 
 	return nil
 }
 
 func init() {
-	flag.BoolVar(&runGC, "del", true, "delete images past the expiration time?")
+	flag.BoolVar(&runGarbageCollector, "del", true, "delete images past the expiration time?")
 	flag.Int64Var(&maxSize, "maxsize", 32<<20, "maximal uploaded image size in bytes")
 	flag.IntVar(&nShaChars, "sumlen", 16, "number of sha256 characters used for image file names")
 	flag.StringVar(&defaultTTLStr, "ttl", "72h", "default image TTL")
@@ -357,12 +361,12 @@ func main() {
 	}
 	uploadRoot = root
 
-	if runGC {
+	if runGarbageCollector {
 		go func() {
 			interval := time.Duration(delayGC) * time.Second
 			ticker := time.NewTicker(interval)
 			for range ticker.C {
-				expiredGC()
+				garbageCollectImages()
 			}
 		}()
 	}
