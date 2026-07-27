@@ -236,7 +236,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 
 	// Serve favicon.
 	if reqPath == "/favicon.ico" {
-		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Content-Type", "image/vnd.microsoft.icon")
 		w.Header().Set("Cache-Control", "public, max-age=86400") // Cache 1 day
 		_, err := w.Write(faviconData)
 		if err != nil {
