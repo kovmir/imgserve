@@ -357,9 +357,6 @@ func main() {
 	}
 	uploadRoot = root
 
-	http.HandleFunc("/upload", handleUpload)
-	http.HandleFunc("/", handleView)
-
 	if runGC {
 		go func() {
 			interval := time.Duration(delayGC) * time.Second
@@ -370,8 +367,21 @@ func main() {
 		}()
 	}
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/upload", handleUpload)
+	mux.HandleFunc("/", handleView)
+
+	srv := http.Server{
+		Addr:              listenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	log.Println("listening on", listenAddr)
-	if err := http.ListenAndServe(listenAddr, nil); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
