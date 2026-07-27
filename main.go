@@ -342,12 +342,12 @@ func init() {
 }
 
 func main() {
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	flag.Parse()
+	if err := validateCLIArgs(); err != nil {
 		panic(err)
 	}
 
-	flag.Parse()
-	if err := validateCLIArgs(); err != nil {
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		panic(err)
 	}
 
