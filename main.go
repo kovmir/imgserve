@@ -281,7 +281,7 @@ func expiredGC() {
 		return
 	}
 	for _, f := range files {
-		if info, err := os.Stat(f); err == nil {
+		if info, err := os.Lstat(f); err == nil {
 			linkName := info.Name()
 			// Index() will not return -1 due to the above Glob().
 			unixTime := linkName[:strings.Index(linkName, linkTimeDelim)]
