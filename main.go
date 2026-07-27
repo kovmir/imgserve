@@ -101,9 +101,6 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 
 	// Save on disk.
 	if err := writeFileExcl(imgPath, imgData, 0644); err != nil {
-		if os.IsExist(err) {
-			return imgURL, nil // Already exists.
-		}
 		return "", err
 	}
 
@@ -185,6 +182,10 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
 	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			http.Error(w, "Already there", http.StatusConflict)
+			return
+		}
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		log.Println(err)
 		return
