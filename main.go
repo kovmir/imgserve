@@ -181,6 +181,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	_, err = io.Copy(&buf, file)
 	if err != nil {
 		http.Error(w, "Form is too big", http.StatusBadRequest)
+		return
 	}
 	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
 	if err != nil {
