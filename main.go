@@ -161,10 +161,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	log.Println("upload from", realIP)
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
-	if err := r.ParseMultipartForm(maxSize); err != nil {
-		http.Error(w, "Form is too big or corrupt.", http.StatusBadRequest)
-		return
-	}
+
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		http.Error(w, "No \"image\" key in the POST form.", http.StatusBadRequest)
@@ -189,7 +186,10 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var buf bytes.Buffer
-	io.Copy(&buf, file)
+	_, err = io.Copy(&buf, file)
+	if err != nil {
+		http.Error(w, "Form is too big", http.StatusBadRequest)
+	}
 	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -283,6 +283,7 @@ func expiredGC() {
 	for _, f := range files {
 		if info, err := os.Stat(f); err == nil {
 			linkName := info.Name()
+			// Index() will not return -1 due to the above Glob().
 			unixTime := linkName[:strings.Index(linkName, linkTimeDelim)]
 			i, _ := strconv.ParseInt(unixTime, 10, 64)
 			expiryTime := time.Unix(i, 0)
