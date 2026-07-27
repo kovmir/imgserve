@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"math/rand"
 	"mime"
@@ -275,26 +276,31 @@ func randomID(n int) string {
 
 // Delete images past the expiration time.
 func expiredGC() {
-	files, err := filepath.Glob(filepath.Join(uploadDir, "*"+linkTimeDelim+"*"))
+	entries, err := os.ReadDir(uploadDir)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	for _, f := range files {
-		if info, err := os.Lstat(f); err == nil {
-			linkName := info.Name()
-			// Index() will not return -1 due to the above Glob().
-			unixTime := linkName[:strings.Index(linkName, linkTimeDelim)]
-			i, _ := strconv.ParseInt(unixTime, 10, 64)
-			expiryTime := time.Unix(i, 0)
+	for _, entry := range entries {
+		if entry.Type() & fs.ModeSymlink == 0 {
+			continue // Not symlink.
+		}
+		linkName := entry.Name()
+		if strings.Contains(linkName, linkTimeDelim) == false {
+			continue // Invalid link.
+		}
+		linkTime := linkName[:strings.Index(linkName, linkTimeDelim)]
+		linkTimeNum, err := strconv.ParseInt(linkTime, 10, 64)
+		if err != nil {
+			continue // Invalid link.
+		}
 
-			if time.Now().After(expiryTime) {
-				// Can delete an image while it is being sent,
-				// but it does not matter.
-				err := deleteImage(linkName)
-				if err != nil {
-					log.Println(err)
-				}
+		expiryTime := time.Unix(linkTimeNum, 0)
+		if time.Now().After(expiryTime) {
+			// Can delete an image while it is being sent; fine.
+			err := deleteImage(linkName)
+			if err != nil {
+				log.Println(err)
 			}
 		}
 	}
