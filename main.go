@@ -89,6 +89,7 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	}
 
 	if imgExt == "" {
+		// _ is safe due to the type whitelisting.
 		exts, _ := mime.ExtensionsByType(contentType)
 		imgExt = exts[0]
 	}
@@ -231,7 +232,10 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	if reqPath == "/favicon.ico" {
 		w.Header().Set("Content-Type", "image/x-icon")
 		w.Header().Set("Cache-Control", "public, max-age=86400") // Cache 1 day
-		w.Write(faviconData)
+		_, err := w.Write(faviconData)
+		if err != nil {
+			log.Println(err)
+		}
 		return
 	}
 
