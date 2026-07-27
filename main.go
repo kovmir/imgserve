@@ -333,7 +333,6 @@ func init() {
 	flag.StringVar(&urlHost, "host", "localhost:8077", "hostname in the response URL")
 	flag.StringVar(&urlProto, "proto", "http", "protocol in the response URL")
 	flag.Uint64Var(&delayGC, "delay", 10, "expired image checker interval in seconds")
-	flag.Parse()
 }
 
 func main() {
@@ -341,6 +340,7 @@ func main() {
 		panic(err)
 	}
 
+	flag.Parse()
 	if err := validateCLIArgs(); err != nil {
 		panic(err)
 	}
