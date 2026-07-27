@@ -16,6 +16,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -46,6 +47,8 @@ var (
 	minTTLStr     string
 	maxTTLStr     string
 
+	uploadRoot *os.Root
+
 	defaultTTL time.Duration
 	minTTL     time.Duration
 	maxTTL     time.Duration
@@ -65,17 +68,6 @@ func writeFileExcl(name string, data []byte, perm os.FileMode) error {
 		err = err1
 	}
 	return err
-}
-
-// Valid paths have no subdirectories.
-func isValidPath(path string) bool {
-	// Split and filter empty parts
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-
-	// "/"        OK
-	// "/abc"     OK
-	// "/abc/def" BAD
-	return len(parts) <= 1
 }
 
 // Save the image and create a link pointing to it;
@@ -215,14 +207,10 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		realIP = r.RemoteAddr
 	}
 
-	reqPath := r.URL.Path
+	reqPath := path.Clean(r.URL.Path)
 	log.Println(reqPath, "requested by", realIP)
 
-	if !isValidPath(reqPath) {
-		http.NotFound(w, r)
-		return
-	}
-
+	// Serve upload form.
 	if reqPath == "/" {
 		w.Header().Set("Content-Type", "text/html; charest=utf-8")
 		uploadFormTmpl.Execute(w, struct {
@@ -239,6 +227,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serve favicon.
 	if reqPath == "/favicon.ico" {
 		w.Header().Set("Content-Type", "image/x-icon")
 		w.Header().Set("Cache-Control", "public, max-age=86400") // Cache 1 day
@@ -246,20 +235,8 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	imgPath := filepath.Join(uploadDir, reqPath)
-	if _, err := os.Stat(imgPath); errors.Is(err, os.ErrNotExist) {
-		http.NotFound(w, r)
-		return
-	}
-
-	ext := filepath.Ext(imgPath)
-	if contentType := mime.TypeByExtension(ext); contentType != "" {
-		w.Header().Set("Content-Type", contentType)
-	} else {
-		w.Header().Set("Content-Type", "application/octet-stream")
-	}
-
-	http.ServeFile(w, r, imgPath)
+	// Serve image.
+	http.ServeFileFS(w, r, uploadRoot.FS(), reqPath)
 }
 
 // Returns a string with random ascii numbers/letters of the specified length.
@@ -367,6 +344,12 @@ func main() {
 	if err := validateCLIArgs(); err != nil {
 		panic(err)
 	}
+
+	root, err := os.OpenRoot(uploadDir)
+	if err != nil {
+		panic(err)
+	}
+	uploadRoot = root
 
 	http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/", handleView)
