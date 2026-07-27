@@ -280,7 +280,7 @@ func expiredGC() {
 		return
 	}
 	for _, entry := range entries {
-		if entry.Type() & fs.ModeSymlink == 0 {
+		if entry.Type()&fs.ModeSymlink == 0 {
 			continue // Not symlink.
 		}
 		linkName := entry.Name()
