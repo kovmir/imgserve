@@ -267,7 +267,7 @@ func expiredGC() {
 			continue // Not symlink.
 		}
 		linkName := entry.Name()
-		if strings.Contains(linkName, linkTimeDelim) == false {
+		if !strings.Contains(linkName, linkTimeDelim) {
 			continue // Invalid link.
 		}
 		linkTime := linkName[:strings.Index(linkName, linkTimeDelim)]
@@ -360,7 +360,7 @@ func main() {
 	http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/", handleView)
 
-	if runGC == true {
+	if runGC {
 		go func() {
 			interval := time.Duration(delayGC) * time.Second
 			ticker := time.NewTicker(interval)
