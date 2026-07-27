@@ -56,7 +56,7 @@ var (
 // os.WriteFile(...) with O_EXCL; for safety against concurrent writes.
 func writeFileExcl(name string, data []byte, perm os.FileMode) error {
 	// O_EXCL ensures atomic creation: fails if file exists.
-	f, err := os.OpenFile(name, os.O_EXCL|os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	f, err := os.OpenFile(name, os.O_EXCL|os.O_WRONLY|os.O_CREATE, perm)
 	if err != nil {
 		return err
 	}
@@ -106,13 +106,11 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	imgPath := filepath.Join(uploadDir, imgName)
 	imgURL := fmt.Sprintf("%s://%s/%s", urlProto, urlHost, imgName)
 
-	if _, err := os.Stat(imgPath); err == nil {
-		// File already exists.
-		return imgURL, nil
-	}
-
 	// Save on disk.
 	if err := writeFileExcl(imgPath, imgData, 0644); err != nil {
+		if os.IsExist(err) {
+			return imgURL, nil // Already exists.
+		}
 		return "", err
 	}
 
