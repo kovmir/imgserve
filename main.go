@@ -215,7 +215,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 
 	// Serve upload form.
 	if reqPath == "/" {
-		w.Header().Set("Content-Type", "text/html; charest=utf-8")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		err := uploadForm.Execute(w, struct {
 			DefaultTTL string
 			MaxTTL     string
