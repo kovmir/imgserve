@@ -153,6 +153,11 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "Too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "No \"image\" key in the POST form.", http.StatusBadRequest)
 		return
 	}
@@ -177,7 +182,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, file)
 	if err != nil {
-		http.Error(w, "Form is too big", http.StatusBadRequest)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		log.Println(err)
 		return
 	}
 	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
