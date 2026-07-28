@@ -104,9 +104,9 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 		return "", err
 	}
 
-	// Create the symlink; it holds the image's expiration time.
-	// Aside from the expiration time, we append a random string
-	// to the link name to avoid naming collisions.
+	// Create a symlink pointing to the image.
+	// The name of the symlink holds expiration time and a random string to
+	// avoid naming collisions.
 	lnName := fmt.Sprintf("%d%s%s", imgExpiresAt.Unix(), linkTimeDelim, randomID(8))
 	lnPath := filepath.Join(uploadDir, lnName)
 	if err := os.Symlink(imgName, lnPath); err != nil {
