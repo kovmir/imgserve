@@ -39,20 +39,15 @@ var (
 	nShaChars           int
 	delayGC             uint64
 	listenAddr          string
-	defaultTTLStr       string
 	uploadDir           string
 	urlProto            string
 	urlHost             string
 	maxSize             int64
-	minTTLStr           string
-	maxTTLStr           string
+	defaultTTL          time.Duration
+	minTTL              time.Duration
+	maxTTL              time.Duration
 
 	uploadRoot *os.Root
-
-	defaultTTL time.Duration
-	minTTL     time.Duration
-	maxTTL     time.Duration
-
 	gitVersion string
 )
 
@@ -174,20 +169,18 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	ttlStr := r.FormValue("ttl")
-	if ttlStr == "" {
-		ttlStr = defaultTTLStr
+	formTTL := r.FormValue("ttl")
+	if formTTL == "" {
+		formTTL = defaultTTL.String()
 	}
-	ttl, err := time.ParseDuration(ttlStr)
+	ttl, err := time.ParseDuration(formTTL)
 	if err != nil {
 		http.Error(w, "Invalid TTL.", http.StatusBadRequest)
 		return
 	}
-	if ttl > maxTTL {
-		ttl = maxTTL
-	}
-	if ttl < minTTL {
-		ttl = minTTL
+	if ttl > maxTTL || ttl < minTTL {
+		http.Error(w, "Invalid TTL.", http.StatusBadRequest)
+		return
 	}
 
 	var buf bytes.Buffer
@@ -234,14 +227,14 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	if reqPath == "/" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		err := uploadForm.Execute(w, struct {
-			DefaultTTL string
-			MaxTTL     string
-			MinTTL     string
+			DefaultTTL time.Duration
+			MaxTTL     time.Duration
+			MinTTL     time.Duration
 			GitVersion string
 		}{
-			defaultTTLStr,
-			maxTTLStr,
-			minTTLStr,
+			defaultTTL,
+			maxTTL,
+			minTTL,
 			gitVersion,
 		})
 		if err != nil {
@@ -340,21 +333,6 @@ func validateCLIArgs() error {
 		return errors.New("use between 16 and 64 sha256 characters")
 	}
 
-	duration, err := time.ParseDuration(defaultTTLStr)
-	if err != nil {
-		return errors.New("invalid default TTL")
-	}
-	defaultTTL = duration
-	duration, err = time.ParseDuration(minTTLStr)
-	if err != nil {
-		return errors.New("invalid minimal TTL")
-	}
-	minTTL = duration
-	duration, err = time.ParseDuration(maxTTLStr)
-	if err != nil {
-		return errors.New("invalid maximal TTL")
-	}
-	maxTTL = duration
 	if minTTL < 5*time.Second {
 		return errors.New("minimal TTL cannot be less than 5 seconds")
 	}
@@ -378,9 +356,9 @@ func init() {
 	flag.BoolVar(&runGarbageCollector, "del", true, "delete images past the expiration time?")
 	flag.Int64Var(&maxSize, "maxsize", 32<<20, "maximal uploaded image size in bytes")
 	flag.IntVar(&nShaChars, "sumlen", 16, "number of sha256 characters used for image file names")
-	flag.StringVar(&defaultTTLStr, "ttl", "72h", "default image TTL")
-	flag.StringVar(&minTTLStr, "minttl", "1h", "minimal image TTL")
-	flag.StringVar(&maxTTLStr, "maxttl", "168h", "maximal image TTL")
+	flag.DurationVar(&defaultTTL, "ttl", 72*time.Hour, "default image TTL")
+	flag.DurationVar(&minTTL, "minttl", 1*time.Hour, "minimal image TTL")
+	flag.DurationVar(&maxTTL, "maxttl", 168*time.Hour, "maximal image TTL")
 	flag.StringVar(&listenAddr, "addr", ":8077", "server listen address")
 	flag.StringVar(&uploadDir, "dir", "./uploads", "uploaded images directory")
 	flag.StringVar(&urlHost, "host", "localhost:8077", "hostname in the response URL")
