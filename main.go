@@ -200,7 +200,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 // Serve images.
 func handleView(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
 		return
 	}
