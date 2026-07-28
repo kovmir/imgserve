@@ -99,11 +99,6 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	imgPath := filepath.Join(uploadDir, imgName)
 	imgURL := fmt.Sprintf("%s://%s/%s", urlProto, urlHost, imgName)
 
-	// Save on disk.
-	if err := writeFileExcl(imgPath, imgData, 0644); err != nil {
-		return "", err
-	}
-
 	// Create a symlink pointing to the image.
 	// The name of the symlink holds expiration time and a random string to
 	// avoid naming collisions.
@@ -112,27 +107,43 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	if err := os.Symlink(imgName, lnPath); err != nil {
 		return "", err
 	}
+	// If the server crashes at this point, we are left with a dangling
+	// symlink, which will be cleaned up at server restart. All good.
+
+	// Save image on disk.
+	// We create the link first so we end up with dangling symlinks, not
+	// orphan images, in the event of a server crash.
+	if err := writeFileExcl(imgPath, imgData, 0644); err != nil {
+		os.Remove(lnPath) // Remove dangling symlink.
+		// File already exists or unknown I/O error.
+		return "", err
+	}
 
 	log.Printf("%s -> %s saved\n", lnName, imgName)
 	return imgURL, nil
 }
 
 // Delete the link and the image it points to.
-func deleteImage(link string) error {
-	linkPath := filepath.Join(uploadDir, link)
-	target, err := os.Readlink(linkPath)
+func deleteImage(linkName string) error {
+	linkPath := filepath.Join(uploadDir, linkName)
+	targetName, err := os.Readlink(linkPath)
 	if err != nil {
 		return err
 	}
+	targetPath := filepath.Join(uploadDir, targetName)
 
+	// Checking for dangling symlinks is easier,
+	// so remove the target first.
+	if err := os.Remove(targetPath); err != nil {
+		return err
+	}
+	// If at this point the server crashes,
+	// it may leave a dangling symlink behind.
 	if err := os.Remove(linkPath); err != nil {
 		return err
 	}
-	if err := os.Remove(filepath.Join(uploadDir, target)); err != nil {
-		return err
-	}
 
-	log.Printf("%s -> %s deleted", link, target)
+	log.Printf("%s -> %s deleted", linkName, targetName)
 	return nil
 }
 
@@ -297,6 +308,32 @@ func garbageCollectImages() {
 	}
 }
 
+// Delete dangling symlinks in the upload directory after server crash.
+func cleanOrphanLinks() {
+	entries, err := os.ReadDir(uploadDir)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	for _, entry := range entries {
+		if entry.Type()&fs.ModeSymlink == 0 {
+			continue // Not symlink.
+		}
+
+		linkPath := filepath.Join(uploadDir, entry.Name())
+		_, err := os.Stat(linkPath)
+		if errors.Is(err, fs.ErrNotExist) {
+			// Dangling symlink.
+			os.Remove(linkPath)
+			continue
+		}
+		if err != nil {
+			log.Println(err) // Unknown error.
+		}
+		// Valid symlink.
+	}
+}
+
 // Verify CLI arguments are valid.
 func validateCLIArgs() error {
 	if nShaChars < 16 || nShaChars > 64 {
@@ -368,6 +405,7 @@ func main() {
 	}
 
 	if runGarbageCollector {
+		cleanOrphanLinks()
 		go func() {
 			interval := time.Duration(delayGC) * time.Second
 			ticker := time.NewTicker(interval)
