@@ -40,8 +40,6 @@ var (
 	delayGC             uint64
 	listenAddr          string
 	uploadDir           string
-	urlProto            string
-	urlHost             string
 	maxSize             int64
 	defaultTTL          time.Duration
 	minTTL              time.Duration
@@ -91,8 +89,6 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 
 	imgHash := fmt.Sprintf("%x", sha256.Sum256(imgData))[:nShaChars]
 	imgName := imgHash + imgExt
-	imgPath := filepath.Join(uploadDir, imgName)
-	imgURL := fmt.Sprintf("%s://%s/%s", urlProto, urlHost, imgName)
 
 	// Create a symlink pointing to the image.
 	// The name of the symlink holds expiration time and a random string to
@@ -108,6 +104,7 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	// Save image on disk.
 	// We create the link first so we end up with dangling symlinks, not
 	// orphan images, in the event of a server crash.
+	imgPath := filepath.Join(uploadDir, imgName)
 	if err := writeFileExcl(imgPath, imgData, 0644); err != nil {
 		os.Remove(lnPath) // Remove dangling symlink.
 		// File already exists or unknown I/O error.
@@ -115,7 +112,7 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	}
 
 	log.Printf("%s -> %s saved\n", lnName, imgName)
-	return imgURL, nil
+	return imgName, nil
 }
 
 // Delete the link and the image it points to.
@@ -190,7 +187,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	url, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
+	imgName, err := saveImage(buf.Bytes(), filepath.Ext(header.Filename), time.Now().Add(ttl))
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			http.Error(w, "Already there", http.StatusConflict)
@@ -201,9 +198,25 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build image URL.
+	scheme := r.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		scheme = "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	url := fmt.Sprintf("%s://%s/%s", scheme, host, imgName)
+
 	if r.FormValue("redirect") == "true" {
+		// Redirect web form to image.
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	} else {
+		// Reply with image URL to CLI tools.
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, url)
 	}
@@ -362,8 +375,6 @@ func init() {
 	flag.DurationVar(&maxTTL, "maxttl", 168*time.Hour, "maximal image TTL")
 	flag.StringVar(&listenAddr, "addr", ":8077", "server listen address")
 	flag.StringVar(&uploadDir, "dir", "./uploads", "uploaded images directory")
-	flag.StringVar(&urlHost, "host", "localhost:8077", "hostname in the response URL")
-	flag.StringVar(&urlProto, "proto", "http", "protocol in the response URL")
 	flag.Uint64Var(&delayGC, "delay", 10, "expired image checker interval in seconds")
 }
 

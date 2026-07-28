@@ -44,3 +44,6 @@ curl -X POST -F "image=@/path/to/image.jpg" -F "ttl=24h" http://localhost:8077/u
 ```
 
 TTL format is documented [here](https://pkg.go.dev/time#ParseDuration).
+
+Proxy server should set `X-Forwarded-Host`, `X-Forwarded-Proto`, and
+`X-Real-IP`.
