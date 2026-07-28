@@ -204,6 +204,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("redirect") == "true" {
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	} else {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, url)
 	}
 }
