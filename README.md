@@ -10,6 +10,8 @@ Minimalist image hosting server.
 * Image [TTL](https://en.wikipedia.org/wiki/Time_to_live)
 * Image deduplication
 
+TLS, authentication, and rate limiting should be handled by a reverse proxy.
+
 # PREVIEW
 
 ![screenshot](screenshot.png)
