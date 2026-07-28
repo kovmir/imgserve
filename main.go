@@ -89,7 +89,7 @@ func saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, e
 	}
 
 	if imgExt == "" {
-		// _ is safe due to the type whitelisting.
+		// _ is safe due to the above type whitelisting.
 		exts, _ := mime.ExtensionsByType(contentType)
 		imgExt = exts[0]
 	}
@@ -249,12 +249,12 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	http.ServeFileFS(w, r, uploadRoot.FS(), reqPath)
 }
 
-// Returns a string with random ascii numbers/letters of the specified length.
-func randomID(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, n)
+// Returns a string with random ascii letters and numbers.
+func randomID(nChars int) string {
+	const charSet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, nChars)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		b[i] = charSet[rand.Intn(len(charSet))]
 	}
 	return string(b)
 }
@@ -291,7 +291,7 @@ func garbageCollectImages() {
 	}
 }
 
-// Verify CLI arguments' validity.
+// Verify CLI arguments are valid.
 func validateCLIArgs() error {
 	if nShaChars < 16 || nShaChars > 64 {
 		return errors.New("use between 16 and 64 sha256 characters")
@@ -355,11 +355,11 @@ func main() {
 		panic(err)
 	}
 
-	root, err := os.OpenRoot(uploadDir)
-	if err != nil {
+	if root, err := os.OpenRoot(uploadDir); err != nil {
 		panic(err)
+	} else {
+		uploadRoot = root
 	}
-	uploadRoot = root
 
 	if runGarbageCollector {
 		go func() {
