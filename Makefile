@@ -19,14 +19,17 @@ build:
 	CGO_ENABLED="$(CGO_ENABLED)" \
 	    go build -ldflags "-w -s -X main.gitVersion=$(GIT_VERSION)" -o ./$(PROJECT) .
 
+test:
+	go test .
+
+fmt:
+	gofmt -s -w *.go
+
 container:
 	$(CONTAINER_ENGINE) build \
 		--build-arg GIT_VERSION=$(GIT_VERSION) \
 		-t $(CONTAINER_TAG) \
 		.
-
-fmt:
-	gofmt -s -w *.go
 
 install:
 	mkdir -p "$(DESTDIR)$(PREFIX)/bin"

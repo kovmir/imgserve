@@ -2,6 +2,6 @@ image: alpine/edge
 packages:
   - go
 tasks:
-  - build: |
+  - test: |
       go version
-      go build -C imgserve
+      make -C imgserve test
