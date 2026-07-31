@@ -16,7 +16,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -314,7 +313,7 @@ func (s *Server) HandleView(w http.ResponseWriter, r *http.Request) {
 	if realIP == "" {
 		realIP = r.RemoteAddr
 	}
-	reqPath := path.Clean(r.URL.Path)
+	reqPath := r.URL.Path
 	log.Println(reqPath, "requested by", realIP)
 
 	// Serve upload form.
