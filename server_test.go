@@ -69,7 +69,7 @@ func TestSaveImage(t *testing.T) {
 		data := newPNG(t)
 		dir := s.cfg.uploadDir
 
-		imgName, err := s.saveImage(data, ".png", s.now().Add(time.Hour))
+		imgName, err := s.saveImage(data, s.now().Add(time.Hour))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +107,7 @@ func TestSaveImage(t *testing.T) {
 	t.Run("invalid_type", func(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
-		_, err := s.saveImage([]byte("not an image"), ".png", s.now().Add(time.Hour))
+		_, err := s.saveImage([]byte("not an image"), s.now().Add(time.Hour))
 		if err == nil || !strings.Contains(err.Error(), "invalid image type") {
 			t.Fatalf("expected invalid image type error, got: %v", err)
 		}
@@ -117,10 +117,10 @@ func TestSaveImage(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
 		data := newPNG(t)
-		if _, err := s.saveImage(data, ".png", s.now().Add(time.Hour)); err != nil {
+		if _, err := s.saveImage(data, s.now().Add(time.Hour)); err != nil {
 			t.Fatal(err)
 		}
-		_, err := s.saveImage(data, ".png", s.now().Add(time.Hour))
+		_, err := s.saveImage(data, s.now().Add(time.Hour))
 		if !errors.Is(err, fs.ErrExist) {
 			t.Fatalf("expected fs.ErrExist, got: %v", err)
 		}
@@ -132,7 +132,7 @@ func TestDeleteImage(t *testing.T) {
 	s := newTestServer(t)
 	data := newPNG(t)
 	dir := s.cfg.uploadDir
-	imgName, err := s.saveImage(data, ".png", s.now().Add(time.Hour))
+	imgName, err := s.saveImage(data, s.now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestGarbageCollect(t *testing.T) {
 
 	// Expired.
 	data1 := newPNG(t)
-	img1, err := s.saveImage(data1, ".png", s.now().Add(-time.Hour))
+	img1, err := s.saveImage(data1, s.now().Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestGarbageCollect(t *testing.T) {
 	data2 := append([]byte(nil), data1...)
 	data2 = append(data2, 0x00)
 	// Non-exipred.
-	img2, err := s.saveImage(data2, ".png", s.now().Add(time.Hour))
+	img2, err := s.saveImage(data2, s.now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,6 +320,28 @@ func TestHandleUpload(t *testing.T) {
 			t.Fatalf("unexpected location: %s", loc)
 		}
 	})
+
+	t.Run("client_filename_extension_ignored", func(t *testing.T) {
+		t.Parallel()
+		s := newTestServer(t)
+		body, contentType := makeUploadBody(t, "image", "evil.html", newPNG(t), nil)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/upload", body)
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Host", "example.com")
+		s.handleUpload(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("code=%d, want %d", rr.Code, http.StatusOK)
+		}
+		respBody := strings.TrimSpace(rr.Body.String())
+		if strings.HasSuffix(respBody, ".html") {
+			t.Fatalf("response leaks client-supplied extension: %s", respBody)
+		}
+		if !strings.HasSuffix(respBody, ".png") {
+			t.Fatalf("expected .png extension, got: %s", respBody)
+		}
+	})
 }
 
 func TestHandleView(t *testing.T) {
@@ -359,7 +381,7 @@ func TestHandleView(t *testing.T) {
 	t.Run("image", func(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
-		imgName, err := s.saveImage(newPNG(t), ".png", s.now().Add(time.Hour))
+		imgName, err := s.saveImage(newPNG(t), s.now().Add(time.Hour))
 		if err != nil {
 			t.Fatal(err)
 		}

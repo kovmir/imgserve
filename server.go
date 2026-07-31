@@ -93,7 +93,7 @@ func writeFileExcl(name string, data []byte, perm os.FileMode) error {
 
 // Save uploaded image on disk and create a symlink with TTL in the name
 // pointing at it.
-func (s *server) saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time) (string, error) {
+func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, error) {
 	allowedTypes := map[string]bool{
 		"image/jpeg": true,
 		"image/png":  true,
@@ -107,11 +107,11 @@ func (s *server) saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time
 	if !allowedTypes[contentType] {
 		return "", errors.New("invalid image type")
 	}
-	if imgExt == "" {
-		// The filetype is known, so the error can be ignored.
-		exts, _ := mime.ExtensionsByType(contentType)
-		imgExt = exts[0]
+	exts, _ := mime.ExtensionsByType(contentType)
+	if len(exts) == 0 {
+		return "", errors.New("invalid image type")
 	}
+	imgExt := exts[0]
 	// Calculate image checksum.
 	imgHash := fmt.Sprintf("%x", sha256.Sum256(imgData))[:s.cfg.nShaChars]
 	// Checksum will be the name of the image to avoid duplicate uploads.
@@ -239,7 +239,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Read the incoming image from the form.
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.maxSize)
-	file, header, err := r.FormFile("image")
+	file, _, err := r.FormFile("image")
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -273,7 +273,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("unable to read from multipart/form-data", "err", err)
 		return
 	}
-	imgName, err := s.saveImage(buf.Bytes(), filepath.Ext(header.Filename), s.now().Add(ttl))
+	imgName, err := s.saveImage(buf.Bytes(), s.now().Add(ttl))
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			http.Error(w, "Already there", http.StatusConflict)
