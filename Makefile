@@ -26,7 +26,7 @@ container:
 		.
 
 fmt:
-	gofmt -w main.go
+	gofmt -s -w *.go
 
 install:
 	mkdir -p "$(DESTDIR)$(PREFIX)/bin"
