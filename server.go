@@ -180,20 +180,20 @@ func (s *server) garbageCollect() {
 		if entry.Type()&fs.ModeSymlink == 0 {
 			continue // Not a link.
 		}
-		linkName := entry.Name()
-		if !strings.Contains(linkName, linkTimeDelim) {
+		lnName := entry.Name()
+		num, _, found := strings.Cut(lnName, linkTimeDelim)
+		if !found {
 			continue // Invalid link.
 		}
-		linkTime := linkName[:strings.Index(linkName, linkTimeDelim)]
-		linkTimeNum, err := strconv.ParseInt(linkTime, 10, 64)
+		ttl, err := strconv.ParseInt(num, 10, 64)
 		if err != nil {
 			continue // Invalid link.
 		}
 
-		expiryTime := time.Unix(linkTimeNum, 0)
+		expiryTime := time.Unix(ttl, 0)
 		if now.After(expiryTime) {
-			if err := s.deleteImage(linkName); err != nil {
-				s.logger.Error("unable to delete image", "img", linkName, "err", err)
+			if err := s.deleteImage(lnName); err != nil {
+				s.logger.Error("unable to delete image", "img", lnName, "err", err)
 			}
 		}
 	}
