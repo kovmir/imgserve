@@ -11,39 +11,39 @@ import (
 var gitVersion = "dev"
 
 // Server config.
-type Config struct {
+type config struct {
 	// Server listen address and port.
-	ListenAddr string
+	listenAddr string
 	// Uploaded images path.
-	UploadDir string
+	uploadDir string
 	// Maximum allowed image size.
-	MaxSize int64
+	maxSize int64
 	// How many SHA256 characters are to be used for image names.
-	NShaChars int
+	nShaChars int
 	// Image TTL: https://en.wikipedia.org/wiki/Time_to_live
-	DefaultTTL time.Duration
-	MinTTL     time.Duration
-	MaxTTL     time.Duration
+	defaultTTL time.Duration
+	minTTL     time.Duration
+	maxTTL     time.Duration
 	// Interval between garbage collector runs.
-	DelayGC time.Duration
+	delayGC time.Duration
 	// Garbage collector removes images past their TTL.
-	RunGarbageCollector bool
+	runGarbageCollector bool
 	// Project version.
-	GitVersion string
+	gitVersion string
 }
 
 // Verify config options are valid.
-func validateConfig(c Config) error {
-	if c.NShaChars < 16 || c.NShaChars > 64 {
+func validateConfig(c config) error {
+	if c.nShaChars < 16 || c.nShaChars > 64 {
 		return errors.New("use between 16 and 64 sha256 characters")
 	}
-	if c.MinTTL < 5*time.Second {
+	if c.minTTL < 5*time.Second {
 		return errors.New("minimal TTL cannot be less than 5 seconds")
 	}
-	if c.MinTTL >= c.MaxTTL {
+	if c.minTTL >= c.maxTTL {
 		return errors.New("maximal TTL must be greater than minimal")
 	}
-	if c.DefaultTTL > c.MaxTTL || c.DefaultTTL < c.MinTTL {
+	if c.defaultTTL > c.maxTTL || c.defaultTTL < c.minTTL {
 		return errors.New("default TTL must be within the minimal and maximal TTLs")
 	}
 	return nil

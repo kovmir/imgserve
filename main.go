@@ -13,30 +13,30 @@ import (
 )
 
 func main() {
-	cfg := Config{
-		RunGarbageCollector: true,
-		MaxSize:             32 << 20,
-		NShaChars:           16,
-		DefaultTTL:          72 * time.Hour,
-		MinTTL:              time.Hour,
-		MaxTTL:              168 * time.Hour,
-		ListenAddr:          ":8077",
-		UploadDir:           "./uploads",
-		DelayGC:             10 * time.Second,
+	cfg := config{
+		runGarbageCollector: true,
+		maxSize:             32 << 20,
+		nShaChars:           16,
+		defaultTTL:          72 * time.Hour,
+		minTTL:              time.Hour,
+		maxTTL:              168 * time.Hour,
+		listenAddr:          ":8077",
+		uploadDir:           "./uploads",
+		delayGC:             10 * time.Second,
 	}
 
-	flag.BoolVar(&cfg.RunGarbageCollector, "del", cfg.RunGarbageCollector, "delete images past the expiration time?")
-	flag.Int64Var(&cfg.MaxSize, "maxsize", cfg.MaxSize, "maximal uploaded image size in bytes")
-	flag.IntVar(&cfg.NShaChars, "sumlen", cfg.NShaChars, "number of sha256 characters used for image file names")
-	flag.DurationVar(&cfg.DefaultTTL, "ttl", cfg.DefaultTTL, "default image TTL")
-	flag.DurationVar(&cfg.MinTTL, "minttl", cfg.MinTTL, "minimal image TTL")
-	flag.DurationVar(&cfg.MaxTTL, "maxttl", cfg.MaxTTL, "maximal image TTL")
-	flag.StringVar(&cfg.ListenAddr, "addr", cfg.ListenAddr, "server listen address")
-	flag.StringVar(&cfg.UploadDir, "dir", cfg.UploadDir, "uploaded images directory")
-	flag.DurationVar(&cfg.DelayGC, "delay", cfg.DelayGC, "expired image checker interval")
+	flag.BoolVar(&cfg.runGarbageCollector, "del", cfg.runGarbageCollector, "delete images past the expiration time?")
+	flag.Int64Var(&cfg.maxSize, "maxsize", cfg.maxSize, "maximal uploaded image size in bytes")
+	flag.IntVar(&cfg.nShaChars, "sumlen", cfg.nShaChars, "number of sha256 characters used for image file names")
+	flag.DurationVar(&cfg.defaultTTL, "ttl", cfg.defaultTTL, "default image TTL")
+	flag.DurationVar(&cfg.minTTL, "minttl", cfg.minTTL, "minimal image TTL")
+	flag.DurationVar(&cfg.maxTTL, "maxttl", cfg.maxTTL, "maximal image TTL")
+	flag.StringVar(&cfg.listenAddr, "addr", cfg.listenAddr, "server listen address")
+	flag.StringVar(&cfg.uploadDir, "dir", cfg.uploadDir, "uploaded images directory")
+	flag.DurationVar(&cfg.delayGC, "delay", cfg.delayGC, "expired image checker interval")
 
 	flag.Parse()
-	cfg.GitVersion = gitVersion
+	cfg.gitVersion = gitVersion
 
 	if err := run(cfg); err != nil {
 		log.Fatal(err)
@@ -44,29 +44,29 @@ func main() {
 }
 
 // Start server.
-func run(cfg Config) error {
+func run(cfg config) error {
 	if err := validateConfig(cfg); err != nil {
 		return err
 	}
-	s, err := NewServer(cfg, uploadFormHTML, faviconData)
+	s, err := newServer(cfg, uploadFormHTML, faviconData)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer s.close()
 
-	if cfg.RunGarbageCollector {
-		s.CleanOrphanLinks()
-		go s.gcLoop(cfg.DelayGC)
+	if cfg.runGarbageCollector {
+		s.cleanOrphanLinks()
+		go s.gcLoop(cfg.delayGC)
 	}
 
 	srv := http.Server{
-		Addr:              cfg.ListenAddr,
-		Handler:           s.Handler(),
+		Addr:              cfg.listenAddr,
+		Handler:           s.handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	log.Println("listening on", cfg.ListenAddr)
+	log.Println("listening on", cfg.listenAddr)
 	return srv.ListenAndServe()
 }
