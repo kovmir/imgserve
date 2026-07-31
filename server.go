@@ -12,7 +12,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -26,6 +26,8 @@ const linkTimeDelim = "_"
 
 type server struct {
 	cfg config
+	// Custom logger
+	logger *slog.Logger
 	// Image upload directory chroot.
 	uploadRoot *os.Root
 	// Upload form HTML template.
@@ -53,6 +55,7 @@ func newServer(cfg config, formHTML string, favicon []byte) (*server, error) {
 	}
 	return &server{
 		cfg:        cfg,
+		logger:     slog.New(slog.NewTextHandler(os.Stdout, nil)),
 		uploadRoot: root,
 		uploadForm: tmpl,
 		favicon:    favicon,
@@ -134,7 +137,7 @@ func (s *server) saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time
 		_ = os.Remove(lnPath)
 		return "", err
 	}
-	log.Printf("%s -> %s saved\n", lnName, imgName)
+	s.logger.Info("image saved", "link", lnName, "target", imgName)
 	return imgName, nil
 }
 
@@ -160,15 +163,16 @@ func (s *server) deleteImage(linkName string) error {
 	if err := os.Remove(linkPath); err != nil {
 		return err
 	}
-	log.Printf("%s -> %s deleted", linkName, targetName)
+	s.logger.Info("image deleted", "link", linkName, "target", targetName)
 	return nil
 }
 
 // Remove images past their expiration time (TTL).
 func (s *server) garbageCollect() {
-	entries, err := os.ReadDir(s.cfg.uploadDir)
+	dir := s.cfg.uploadDir
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		log.Println(err)
+		s.logger.Error("unable to read upload directory", "dir", dir, "err", err)
 		return
 	}
 	now := s.now()
@@ -189,7 +193,7 @@ func (s *server) garbageCollect() {
 		expiryTime := time.Unix(linkTimeNum, 0)
 		if now.After(expiryTime) {
 			if err := s.deleteImage(linkName); err != nil {
-				log.Println(err)
+				s.logger.Error("unable to delete image", "img", linkName, "err", err)
 			}
 		}
 	}
@@ -197,9 +201,10 @@ func (s *server) garbageCollect() {
 
 // Clean up dangling symlinks after a possible server crash.
 func (s *server) cleanOrphanLinks() {
-	entries, err := os.ReadDir(s.cfg.uploadDir)
+	dir := s.cfg.uploadDir
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		log.Println(err)
+		s.logger.Error("unable to read upload directory", "dir", dir, "err", err)
 		return
 	}
 	for _, entry := range entries {
@@ -215,7 +220,7 @@ func (s *server) cleanOrphanLinks() {
 		}
 		if err != nil {
 			// Unknown error.
-			log.Println(err)
+			s.logger.Error("unable to resolve link", "link", linkPath, "err", err)
 		}
 	}
 }
@@ -230,7 +235,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if realIP == "" {
 		realIP = r.RemoteAddr
 	}
-	log.Println("upload from", realIP)
+	s.logger.Info("incoming request", "method", r.Method, "path", r.URL.Path, "ip", realIP)
 
 	// Read the incoming image from the form.
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.maxSize)
@@ -265,7 +270,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, file); err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		log.Println(err)
+		s.logger.Error("unable to read from multipart/form-data", "err", err)
 		return
 	}
 	imgName, err := s.saveImage(buf.Bytes(), filepath.Ext(header.Filename), s.now().Add(ttl))
@@ -275,7 +280,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		log.Println(err)
+		s.logger.Error("unable to save uploaded image on disk", "err", err)
 		return
 	}
 
@@ -314,7 +319,7 @@ func (s *server) handleView(w http.ResponseWriter, r *http.Request) {
 		realIP = r.RemoteAddr
 	}
 	reqPath := r.URL.Path
-	log.Println(reqPath, "requested by", realIP)
+	s.logger.Info("incoming request", "method", r.Method, "path", reqPath, "ip", realIP)
 
 	// Serve upload form.
 	if reqPath == "/" {
@@ -330,8 +335,8 @@ func (s *server) handleView(w http.ResponseWriter, r *http.Request) {
 			s.cfg.minTTL,
 			s.cfg.gitVersion,
 		}); err != nil {
-			log.Println(err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			s.logger.Error("unable to execute template", "err", err)
 		}
 		return
 	}
@@ -341,7 +346,7 @@ func (s *server) handleView(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/vnd.microsoft.icon")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		if _, err := w.Write(s.favicon); err != nil {
-			log.Println(err)
+			s.logger.Error("unable to send favicon", "err", err)
 		}
 		return
 	}

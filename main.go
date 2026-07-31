@@ -7,7 +7,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"net/http"
 	"time"
 )
@@ -39,7 +38,7 @@ func main() {
 	cfg.gitVersion = gitVersion
 
 	if err := run(cfg); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 }
 
@@ -67,6 +66,6 @@ func run(cfg config) error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	log.Println("listening on", cfg.listenAddr)
+	s.logger.Info("listening", "interface", cfg.listenAddr)
 	return srv.ListenAndServe()
 }

@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,8 @@ func newTestServer(t *testing.T) *server {
 	fixed := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	s.now = func() time.Time { return fixed }
 	s.randomID = func(n int) string { return strings.Repeat("a", n) }
+	// Silence logs.
+	s.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	return s
 }
