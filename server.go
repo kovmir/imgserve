@@ -142,16 +142,16 @@ func (s *server) saveImage(imgData []byte, imgExt string, imgExpiresAt time.Time
 }
 
 // Delete the image from disk and the link pointing at it.
-func (s *server) deleteImage(linkName string) error {
-	linkPath := filepath.Join(s.cfg.uploadDir, linkName)
-	targetName, err := os.Readlink(linkPath)
+func (s *server) deleteImage(lnName string) error {
+	lnPath := filepath.Join(s.cfg.uploadDir, lnName)
+	imgName, err := os.Readlink(lnPath)
 	if err != nil {
 		return err
 	}
-	targetPath := filepath.Join(s.cfg.uploadDir, targetName)
+	imgPath := filepath.Join(s.cfg.uploadDir, imgName)
 
 	// Remove the image first...
-	if err := os.Remove(targetPath); err != nil {
+	if err := os.Remove(imgPath); err != nil {
 		return err
 	}
 
@@ -160,10 +160,10 @@ func (s *server) deleteImage(linkName string) error {
 	// restart.
 
 	// Then the link.
-	if err := os.Remove(linkPath); err != nil {
+	if err := os.Remove(lnPath); err != nil {
 		return err
 	}
-	s.logger.Info("image deleted", "link", linkName, "target", targetName)
+	s.logger.Info("image deleted", "link", lnName, "target", imgName)
 	return nil
 }
 
