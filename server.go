@@ -140,13 +140,13 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 
 // Delete the image from disk and the link pointing at it.
 func (s *server) deleteImage(lnName string) error {
-	imgName, err := s.chroot.Readlink(lnName)
+	lnTarget, err := s.chroot.Readlink(lnName)
 	if err != nil {
 		return err
 	}
 
 	// Remove the image first...
-	if err := s.chroot.Remove(imgName); err != nil {
+	if err := s.chroot.Remove(lnTarget); err != nil {
 		return err
 	}
 
@@ -158,7 +158,7 @@ func (s *server) deleteImage(lnName string) error {
 	if err := s.chroot.Remove(lnName); err != nil {
 		return err
 	}
-	s.logger.Info("image deleted", "link", lnName, "target", imgName)
+	s.logger.Info("image deleted", "link", lnName, "target", lnTarget)
 	return nil
 }
 
