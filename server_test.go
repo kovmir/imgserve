@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -67,7 +66,6 @@ func TestSaveImage(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
 		data := newPNG(t)
-		dir := s.cfg.uploadPath
 
 		imgName, err := s.saveImage(data, s.currTime().Add(time.Hour))
 		if err != nil {
@@ -75,13 +73,12 @@ func TestSaveImage(t *testing.T) {
 		}
 
 		// Image must exist.
-		imgPath := filepath.Join(dir, imgName)
-		if _, err := os.Stat(imgPath); err != nil {
+		if _, err := s.chroot.Stat(imgName); err != nil {
 			t.Fatalf("image not found: %v", err)
 		}
 
 		// Symlink must exist and point to the image.
-		entries, err := os.ReadDir(dir)
+		entries, err := fs.ReadDir(s.chroot.FS(), ".")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,7 +87,7 @@ func TestSaveImage(t *testing.T) {
 			if e.Type()&fs.ModeSymlink == 0 {
 				continue
 			}
-			target, err := os.Readlink(filepath.Join(dir, e.Name()))
+			target, err := s.chroot.Readlink(e.Name())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,10 +150,10 @@ func TestDeleteImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, imgName)); !os.IsNotExist(err) {
+	if _, err := s.chroot.Stat(imgName); !os.IsNotExist(err) {
 		t.Fatal("image should be deleted")
 	}
-	if _, err := os.Stat(filepath.Join(dir, lnName)); !os.IsNotExist(err) {
+	if _, err := s.chroot.Stat(lnName); !os.IsNotExist(err) {
 		t.Fatal("link should be deleted")
 	}
 }
@@ -164,7 +161,6 @@ func TestDeleteImage(t *testing.T) {
 func TestGarbageCollect(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
-	dir := s.cfg.uploadPath
 
 	// Expired.
 	data1 := newPNG(t)
@@ -184,10 +180,10 @@ func TestGarbageCollect(t *testing.T) {
 
 	s.garbageCollect()
 
-	if _, err := os.Stat(filepath.Join(dir, img1)); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := s.chroot.Stat(img1); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal("expired image should be removed")
 	}
-	if _, err := os.Stat(filepath.Join(dir, img2)); err != nil {
+	if _, err := s.chroot.Stat(img2); err != nil {
 		t.Fatal("valid image should remain")
 	}
 }
@@ -195,26 +191,25 @@ func TestGarbageCollect(t *testing.T) {
 func TestCleanOrphanLinks(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
-	lnName := filepath.Join(s.cfg.uploadPath, "1000"+linkTimeDelim+"abc12345")
-	if err := os.Symlink("orpahn-link-to-missing.png", lnName); err != nil {
+	lnName := "1000" + linkTimeDelim + "abc12345"
+	if err := s.chroot.Symlink("orpahn-link-to-missing.png", lnName); err != nil {
 		t.Fatal(err)
 	}
 
 	s.cleanOrphanLinks()
 
-	if _, err := os.Stat(lnName); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := s.chroot.Stat(lnName); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal("dangling symlink should be removed")
 	}
 }
 
 func TestWriteFileExcl(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "foo.txt")
-	if err := writeFileExcl(path, []byte("a"), 0o644); err != nil {
+	s := newTestServer(t)
+	if err := writeFileExcl(s.chroot, "foo.txt", []byte("a"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileExcl(path, []byte("b"), 0o644); !errors.Is(err, fs.ErrExist) {
+	if err := writeFileExcl(s.chroot, "foo.txt", []byte("b"), 0o644); !errors.Is(err, fs.ErrExist) {
 		t.Fatalf("expected fs.ErrExist, got: %v", err)
 	}
 }

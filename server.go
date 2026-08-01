@@ -16,7 +16,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -78,14 +77,14 @@ func (s *server) handler() http.Handler {
 	return mux
 }
 
-// os.WriteFile with O_EXCL for atomic file creation without overrides.
-func writeFileExcl(name string, data []byte, perm os.FileMode) error {
-	f, err := os.OpenFile(name, os.O_EXCL|os.O_WRONLY|os.O_CREATE, perm)
+// os.Root.WriteFile with O_EXCL for atomic file creation without overrides.
+func writeFileExcl(r *os.Root, name string, data []byte, perm os.FileMode) error {
+	f, err := r.OpenFile(name, os.O_EXCL|os.O_WRONLY|os.O_CREATE, perm)
 	if err != nil {
 		return err
 	}
 	_, err = f.Write(data)
-	if err1 := f.Close(); err1 != nil && err == nil {
+	if err1 := f.Close(); err == nil {
 		err = err1
 	}
 	return err
@@ -121,8 +120,7 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 	// timestamp in the name and random characters to avoid naming
 	// collisions.
 	lnName := fmt.Sprintf("%d%s%s", imgExpiresAt.Unix(), linkTimeDelim, s.randID(8))
-	lnPath := filepath.Join(s.cfg.uploadPath, lnName)
-	if err := os.Symlink(imgName, lnPath); err != nil {
+	if err := s.chroot.Symlink(imgName, lnName); err != nil {
 		return "", err
 	}
 
@@ -131,10 +129,9 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 	// restart.
 
 	// Save the image on disk.
-	imgPath := filepath.Join(s.cfg.uploadPath, imgName)
-	if err := writeFileExcl(imgPath, imgData, 0o644); err != nil {
+	if err := writeFileExcl(s.chroot, imgName, imgData, 0o644); err != nil {
 		// Could not save the image, so remove the dangling symlink.
-		_ = os.Remove(lnPath)
+		_ = s.chroot.Remove(lnName)
 		return "", err
 	}
 	s.logger.Info("image saved", "link", lnName, "target", imgName)
@@ -143,15 +140,13 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 
 // Delete the image from disk and the link pointing at it.
 func (s *server) deleteImage(lnName string) error {
-	lnPath := filepath.Join(s.cfg.uploadPath, lnName)
-	imgName, err := os.Readlink(lnPath)
+	imgName, err := s.chroot.Readlink(lnName)
 	if err != nil {
 		return err
 	}
-	imgPath := filepath.Join(s.cfg.uploadPath, imgName)
 
 	// Remove the image first...
-	if err := os.Remove(imgPath); err != nil {
+	if err := s.chroot.Remove(imgName); err != nil {
 		return err
 	}
 
@@ -160,7 +155,7 @@ func (s *server) deleteImage(lnName string) error {
 	// restart.
 
 	// Then the link.
-	if err := os.Remove(lnPath); err != nil {
+	if err := s.chroot.Remove(lnName); err != nil {
 		return err
 	}
 	s.logger.Info("image deleted", "link", lnName, "target", imgName)
@@ -169,10 +164,9 @@ func (s *server) deleteImage(lnName string) error {
 
 // Remove images past their expiration time (TTL).
 func (s *server) garbageCollect() {
-	dir := s.cfg.uploadPath
-	entries, err := os.ReadDir(dir)
+	entries, err := fs.ReadDir(s.chroot.FS(), ".")
 	if err != nil {
-		s.logger.Error("unable to read upload directory", "dir", dir, "err", err)
+		s.logger.Error("unable to read upload directory", "dir", s.cfg.uploadPath, "err", err)
 		return
 	}
 	now := s.currTime()
@@ -201,26 +195,25 @@ func (s *server) garbageCollect() {
 
 // Clean up dangling symlinks after a possible server crash.
 func (s *server) cleanOrphanLinks() {
-	dir := s.cfg.uploadPath
-	entries, err := os.ReadDir(dir)
+	entries, err := fs.ReadDir(s.chroot.FS(), ".")
 	if err != nil {
-		s.logger.Error("unable to read upload directory", "dir", dir, "err", err)
+		s.logger.Error("unable to read upload directory", "dir", s.cfg.uploadPath, "err", err)
 		return
 	}
 	for _, entry := range entries {
 		if entry.Type()&fs.ModeSymlink == 0 {
 			continue // Not a link.
 		}
-		lnPath := filepath.Join(s.cfg.uploadPath, entry.Name())
-		_, err := os.Stat(lnPath)
+		lnName := entry.Name()
+		_, err := s.chroot.Stat(lnName)
 		if errors.Is(err, fs.ErrNotExist) {
 			// Dangling link.
-			_ = os.Remove(lnPath)
+			_ = s.chroot.Remove(lnName)
 			continue
 		}
 		if err != nil {
 			// Unknown error.
-			s.logger.Error("unable to resolve link", "link", lnPath, "err", err)
+			s.logger.Error("unable to resolve link", "link", lnName, "err", err)
 		}
 	}
 }
