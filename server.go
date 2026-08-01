@@ -163,7 +163,7 @@ func (s *server) deleteImage(lnName string) error {
 }
 
 // Remove images past their expiration time (TTL).
-func (s *server) garbageCollect() {
+func (s *server) imgGarbageCollect() {
 	entries, err := fs.ReadDir(s.chroot.FS(), ".")
 	if err != nil {
 		s.logger.Error("unable to read upload directory", "dir", s.cfg.uploadPath, "err", err)
@@ -352,6 +352,6 @@ func (s *server) handleView(w http.ResponseWriter, r *http.Request) {
 func (s *server) gcLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	for range ticker.C {
-		s.garbageCollect()
+		s.imgGarbageCollect()
 	}
 }

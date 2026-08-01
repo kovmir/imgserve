@@ -178,7 +178,7 @@ func TestGarbageCollect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s.garbageCollect()
+	s.imgGarbageCollect()
 
 	if _, err := s.chroot.Stat(img1); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal("expired image should be removed")
