@@ -29,22 +29,22 @@ type server struct {
 	// Custom logger
 	logger *slog.Logger
 	// Image upload directory chroot.
-	uploadRoot *os.Root
+	chroot *os.Root
 	// Upload form HTML template.
-	uploadForm *template.Template
+	htmlForm *template.Template
 	// Web page favicon.
 	favicon []byte
 	// These are function pointers,
 	// so they can be replaced during unit testing.
-	now      func() time.Time
-	randomID func(int) string
+	currTime func() time.Time
+	randID   func(int) string
 }
 
 func newServer(cfg config, formHTML string, favicon []byte) (*server, error) {
-	if err := os.MkdirAll(cfg.uploadDir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.uploadPath, 0o755); err != nil {
 		return nil, err
 	}
-	root, err := os.OpenRoot(cfg.uploadDir)
+	root, err := os.OpenRoot(cfg.uploadPath)
 	if err != nil {
 		return nil, err
 	}
@@ -54,19 +54,19 @@ func newServer(cfg config, formHTML string, favicon []byte) (*server, error) {
 		return nil, err
 	}
 	return &server{
-		cfg:        cfg,
-		logger:     slog.New(slog.NewTextHandler(os.Stdout, nil)),
-		uploadRoot: root,
-		uploadForm: tmpl,
-		favicon:    favicon,
-		now:        time.Now,
-		randomID:   defaultRandomID,
+		cfg:      cfg,
+		logger:   slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		chroot:   root,
+		htmlForm: tmpl,
+		favicon:  favicon,
+		currTime: time.Now,
+		randID:   defaultRandomID,
 	}, nil
 }
 
 func (s *server) close() error {
-	if s.uploadRoot != nil {
-		return s.uploadRoot.Close()
+	if s.chroot != nil {
+		return s.chroot.Close()
 	}
 	return nil
 }
@@ -113,15 +113,15 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 	}
 	imgExt := exts[0]
 	// Calculate image checksum.
-	imgHash := fmt.Sprintf("%x", sha256.Sum256(imgData))[:s.cfg.nShaChars]
+	imgHash := fmt.Sprintf("%x", sha256.Sum256(imgData))[:s.cfg.hashLen]
 	// Checksum will be the name of the image to avoid duplicate uploads.
 	imgName := imgHash + imgExt
 
 	// Create a symlink pointing to the image. The link holds expiration
 	// timestamp in the name and random characters to avoid naming
 	// collisions.
-	lnName := fmt.Sprintf("%d%s%s", imgExpiresAt.Unix(), linkTimeDelim, s.randomID(8))
-	lnPath := filepath.Join(s.cfg.uploadDir, lnName)
+	lnName := fmt.Sprintf("%d%s%s", imgExpiresAt.Unix(), linkTimeDelim, s.randID(8))
+	lnPath := filepath.Join(s.cfg.uploadPath, lnName)
 	if err := os.Symlink(imgName, lnPath); err != nil {
 		return "", err
 	}
@@ -131,7 +131,7 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 	// restart.
 
 	// Save the image on disk.
-	imgPath := filepath.Join(s.cfg.uploadDir, imgName)
+	imgPath := filepath.Join(s.cfg.uploadPath, imgName)
 	if err := writeFileExcl(imgPath, imgData, 0o644); err != nil {
 		// Could not save the image, so remove the dangling symlink.
 		_ = os.Remove(lnPath)
@@ -143,12 +143,12 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 
 // Delete the image from disk and the link pointing at it.
 func (s *server) deleteImage(lnName string) error {
-	lnPath := filepath.Join(s.cfg.uploadDir, lnName)
+	lnPath := filepath.Join(s.cfg.uploadPath, lnName)
 	imgName, err := os.Readlink(lnPath)
 	if err != nil {
 		return err
 	}
-	imgPath := filepath.Join(s.cfg.uploadDir, imgName)
+	imgPath := filepath.Join(s.cfg.uploadPath, imgName)
 
 	// Remove the image first...
 	if err := os.Remove(imgPath); err != nil {
@@ -169,13 +169,13 @@ func (s *server) deleteImage(lnName string) error {
 
 // Remove images past their expiration time (TTL).
 func (s *server) garbageCollect() {
-	dir := s.cfg.uploadDir
+	dir := s.cfg.uploadPath
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		s.logger.Error("unable to read upload directory", "dir", dir, "err", err)
 		return
 	}
-	now := s.now()
+	now := s.currTime()
 	for _, entry := range entries {
 		if entry.Type()&fs.ModeSymlink == 0 {
 			continue // Not a link.
@@ -201,7 +201,7 @@ func (s *server) garbageCollect() {
 
 // Clean up dangling symlinks after a possible server crash.
 func (s *server) cleanOrphanLinks() {
-	dir := s.cfg.uploadDir
+	dir := s.cfg.uploadPath
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		s.logger.Error("unable to read upload directory", "dir", dir, "err", err)
@@ -211,16 +211,16 @@ func (s *server) cleanOrphanLinks() {
 		if entry.Type()&fs.ModeSymlink == 0 {
 			continue // Not a link.
 		}
-		linkPath := filepath.Join(s.cfg.uploadDir, entry.Name())
-		_, err := os.Stat(linkPath)
+		lnPath := filepath.Join(s.cfg.uploadPath, entry.Name())
+		_, err := os.Stat(lnPath)
 		if errors.Is(err, fs.ErrNotExist) {
 			// Dangling link.
-			_ = os.Remove(linkPath)
+			_ = os.Remove(lnPath)
 			continue
 		}
 		if err != nil {
 			// Unknown error.
-			s.logger.Error("unable to resolve link", "link", linkPath, "err", err)
+			s.logger.Error("unable to resolve link", "link", lnPath, "err", err)
 		}
 	}
 }
@@ -238,7 +238,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("incoming request", "method", r.Method, "path", r.URL.Path, "ip", realIP)
 
 	// Read the incoming image from the form.
-	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.maxSize)
+	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.maxImgSize)
 	file, _, err := r.FormFile("image")
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
@@ -273,7 +273,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("unable to read from multipart/form-data", "err", err)
 		return
 	}
-	imgName, err := s.saveImage(buf.Bytes(), s.now().Add(ttl))
+	imgName, err := s.saveImage(buf.Bytes(), s.currTime().Add(ttl))
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			http.Error(w, "Already there", http.StatusConflict)
@@ -324,7 +324,7 @@ func (s *server) handleView(w http.ResponseWriter, r *http.Request) {
 	// Serve upload form.
 	if reqPath == "/" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := s.uploadForm.Execute(w, struct {
+		if err := s.htmlForm.Execute(w, struct {
 			DefaultTTL time.Duration
 			MaxTTL     time.Duration
 			MinTTL     time.Duration
@@ -352,7 +352,7 @@ func (s *server) handleView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Serve the image.
-	http.ServeFileFS(w, r, s.uploadRoot.FS(), reqPath)
+	http.ServeFileFS(w, r, s.chroot.FS(), reqPath)
 }
 
 // Periodically run garbage collector, runs in a separate goroutine.

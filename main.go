@@ -13,26 +13,26 @@ import (
 
 func main() {
 	cfg := config{
-		runGarbageCollector: true,
-		maxSize:             32 << 20,
-		nShaChars:           16,
-		defaultTTL:          72 * time.Hour,
-		minTTL:              time.Hour,
-		maxTTL:              168 * time.Hour,
-		listenAddr:          ":8077",
-		uploadDir:           "./uploads",
-		delayGC:             10 * time.Second,
+		cleanUpImages:     true,
+		maxImgSize:        32 << 20,
+		hashLen:           16,
+		defaultTTL:        72 * time.Hour,
+		minTTL:            time.Hour,
+		maxTTL:            168 * time.Hour,
+		listenAddr:        ":8077",
+		uploadPath:        "./uploads",
+		imageCleanUpDelay: 10 * time.Second,
 	}
 
-	flag.BoolVar(&cfg.runGarbageCollector, "del", cfg.runGarbageCollector, "delete images past the expiration time?")
-	flag.Int64Var(&cfg.maxSize, "maxsize", cfg.maxSize, "maximal uploaded image size in bytes")
-	flag.IntVar(&cfg.nShaChars, "sumlen", cfg.nShaChars, "number of sha256 characters used for image file names")
+	flag.BoolVar(&cfg.cleanUpImages, "del", cfg.cleanUpImages, "delete images past the expiration time?")
+	flag.Int64Var(&cfg.maxImgSize, "maxsize", cfg.maxImgSize, "maximal uploaded image size in bytes")
+	flag.IntVar(&cfg.hashLen, "sumlen", cfg.hashLen, "number of sha256 characters used for image file names")
 	flag.DurationVar(&cfg.defaultTTL, "ttl", cfg.defaultTTL, "default image TTL")
 	flag.DurationVar(&cfg.minTTL, "minttl", cfg.minTTL, "minimal image TTL")
 	flag.DurationVar(&cfg.maxTTL, "maxttl", cfg.maxTTL, "maximal image TTL")
 	flag.StringVar(&cfg.listenAddr, "addr", cfg.listenAddr, "server listen address")
-	flag.StringVar(&cfg.uploadDir, "dir", cfg.uploadDir, "uploaded images directory")
-	flag.DurationVar(&cfg.delayGC, "delay", cfg.delayGC, "expired image checker interval")
+	flag.StringVar(&cfg.uploadPath, "dir", cfg.uploadPath, "uploaded images directory")
+	flag.DurationVar(&cfg.imageCleanUpDelay, "delay", cfg.imageCleanUpDelay, "expired image checker interval")
 
 	flag.Parse()
 	cfg.gitVersion = gitVersion
@@ -53,9 +53,9 @@ func run(cfg config) error {
 	}
 	defer s.close()
 
-	if cfg.runGarbageCollector {
+	if cfg.cleanUpImages {
 		s.cleanOrphanLinks()
-		go s.gcLoop(cfg.delayGC)
+		go s.gcLoop(cfg.imageCleanUpDelay)
 	}
 
 	srv := http.Server{

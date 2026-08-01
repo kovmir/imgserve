@@ -25,9 +25,9 @@ func newTestServer(t *testing.T) *server {
 
 	dir := t.TempDir()
 	cfg := config{
-		uploadDir:  dir,
-		nShaChars:  16,
-		maxSize:    1 << 20,
+		uploadPath: dir,
+		hashLen:    16,
+		maxImgSize: 1 << 20,
 		defaultTTL: time.Hour,
 		maxTTL:     24 * time.Hour,
 		minTTL:     time.Minute,
@@ -42,8 +42,8 @@ func newTestServer(t *testing.T) *server {
 
 	// Deterministic replacements.
 	fixed := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-	s.now = func() time.Time { return fixed }
-	s.randomID = func(n int) string { return strings.Repeat("a", n) }
+	s.currTime = func() time.Time { return fixed }
+	s.randID = func(n int) string { return strings.Repeat("a", n) }
 	// Silence logs.
 	s.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -67,9 +67,9 @@ func TestSaveImage(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
 		data := newPNG(t)
-		dir := s.cfg.uploadDir
+		dir := s.cfg.uploadPath
 
-		imgName, err := s.saveImage(data, s.now().Add(time.Hour))
+		imgName, err := s.saveImage(data, s.currTime().Add(time.Hour))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +107,7 @@ func TestSaveImage(t *testing.T) {
 	t.Run("invalid_type", func(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
-		_, err := s.saveImage([]byte("not an image"), s.now().Add(time.Hour))
+		_, err := s.saveImage([]byte("not an image"), s.currTime().Add(time.Hour))
 		if err == nil || !strings.Contains(err.Error(), "invalid image type") {
 			t.Fatalf("expected invalid image type error, got: %v", err)
 		}
@@ -117,10 +117,10 @@ func TestSaveImage(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
 		data := newPNG(t)
-		if _, err := s.saveImage(data, s.now().Add(time.Hour)); err != nil {
+		if _, err := s.saveImage(data, s.currTime().Add(time.Hour)); err != nil {
 			t.Fatal(err)
 		}
-		_, err := s.saveImage(data, s.now().Add(time.Hour))
+		_, err := s.saveImage(data, s.currTime().Add(time.Hour))
 		if !errors.Is(err, fs.ErrExist) {
 			t.Fatalf("expected fs.ErrExist, got: %v", err)
 		}
@@ -131,32 +131,32 @@ func TestDeleteImage(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 	data := newPNG(t)
-	dir := s.cfg.uploadDir
-	imgName, err := s.saveImage(data, s.now().Add(time.Hour))
+	dir := s.cfg.uploadPath
+	imgName, err := s.saveImage(data, s.currTime().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	entries, _ := os.ReadDir(dir)
-	var linkName string
+	var lnName string
 	for _, e := range entries {
 		if e.Type()&fs.ModeSymlink != 0 {
-			linkName = e.Name()
+			lnName = e.Name()
 			break
 		}
 	}
-	if linkName == "" {
+	if lnName == "" {
 		t.Fatal("no symlink created")
 	}
 
-	if err := s.deleteImage(linkName); err != nil {
+	if err := s.deleteImage(lnName); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := os.Stat(filepath.Join(dir, imgName)); !os.IsNotExist(err) {
 		t.Fatal("image should be deleted")
 	}
-	if _, err := os.Stat(filepath.Join(dir, linkName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, lnName)); !os.IsNotExist(err) {
 		t.Fatal("link should be deleted")
 	}
 }
@@ -164,11 +164,11 @@ func TestDeleteImage(t *testing.T) {
 func TestGarbageCollect(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
-	dir := s.cfg.uploadDir
+	dir := s.cfg.uploadPath
 
 	// Expired.
 	data1 := newPNG(t)
-	img1, err := s.saveImage(data1, s.now().Add(-time.Hour))
+	img1, err := s.saveImage(data1, s.currTime().Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestGarbageCollect(t *testing.T) {
 	data2 := append([]byte(nil), data1...)
 	data2 = append(data2, 0x00)
 	// Non-exipred.
-	img2, err := s.saveImage(data2, s.now().Add(time.Hour))
+	img2, err := s.saveImage(data2, s.currTime().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,14 +195,14 @@ func TestGarbageCollect(t *testing.T) {
 func TestCleanOrphanLinks(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
-	linkName := filepath.Join(s.cfg.uploadDir, "1000"+linkTimeDelim+"abc12345")
-	if err := os.Symlink("orpahn-link-to-missing.png", linkName); err != nil {
+	lnName := filepath.Join(s.cfg.uploadPath, "1000"+linkTimeDelim+"abc12345")
+	if err := os.Symlink("orpahn-link-to-missing.png", lnName); err != nil {
 		t.Fatal(err)
 	}
 
 	s.cleanOrphanLinks()
 
-	if _, err := os.Stat(linkName); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(lnName); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal("dangling symlink should be removed")
 	}
 }
@@ -273,7 +273,7 @@ func TestHandleUpload(t *testing.T) {
 	t.Run("too_large", func(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
-		s.cfg.maxSize = 10
+		s.cfg.maxImgSize = 10
 		body, contentType := makeUploadBody(t, "image", "test.png", newPNG(t), nil)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/upload", body)
@@ -381,7 +381,7 @@ func TestHandleView(t *testing.T) {
 	t.Run("image", func(t *testing.T) {
 		t.Parallel()
 		s := newTestServer(t)
-		imgName, err := s.saveImage(newPNG(t), s.now().Add(time.Hour))
+		imgName, err := s.saveImage(newPNG(t), s.currTime().Add(time.Hour))
 		if err != nil {
 			t.Fatal(err)
 		}

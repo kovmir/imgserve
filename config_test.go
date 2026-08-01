@@ -10,7 +10,7 @@ import (
 func TestValidateConfig(t *testing.T) {
 	// valid baseline config used across subtests
 	valid := config{
-		nShaChars:  32,
+		hashLen:    32,
 		minTTL:     5 * time.Second,
 		maxTTL:     60 * time.Second,
 		defaultTTL: 30 * time.Second,
@@ -24,22 +24,22 @@ func TestValidateConfig(t *testing.T) {
 		// --- nShaChars ---
 		{
 			name:    "nShaChars too low",
-			mutate:  func(c *config) { c.nShaChars = 15 },
+			mutate:  func(c *config) { c.hashLen = 15 },
 			wantErr: "use between 16 and 64 sha256 characters",
 		},
 		{
 			name:    "nShaChars boundary low (16 is valid)",
-			mutate:  func(c *config) { c.nShaChars = 16 },
+			mutate:  func(c *config) { c.hashLen = 16 },
 			wantErr: "",
 		},
 		{
 			name:    "nShaChars too high",
-			mutate:  func(c *config) { c.nShaChars = 65 },
+			mutate:  func(c *config) { c.hashLen = 65 },
 			wantErr: "use between 16 and 64 sha256 characters",
 		},
 		{
 			name:    "nShaChars boundary high (64 is valid)",
-			mutate:  func(c *config) { c.nShaChars = 64 },
+			mutate:  func(c *config) { c.hashLen = 64 },
 			wantErr: "",
 		},
 

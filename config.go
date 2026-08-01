@@ -15,26 +15,26 @@ type config struct {
 	// Server listen address and port.
 	listenAddr string
 	// Uploaded images path.
-	uploadDir string
+	uploadPath string
 	// Maximum allowed image size.
-	maxSize int64
+	maxImgSize int64
 	// How many SHA256 characters are to be used for image names.
-	nShaChars int
+	hashLen int
 	// Image TTL: https://en.wikipedia.org/wiki/Time_to_live
 	defaultTTL time.Duration
 	minTTL     time.Duration
 	maxTTL     time.Duration
-	// Interval between garbage collector runs.
-	delayGC time.Duration
-	// Garbage collector removes images past their TTL.
-	runGarbageCollector bool
+	// Remove images past their TTL?
+	cleanUpImages bool
+	// Interval between expired image checks.
+	imageCleanUpDelay time.Duration
 	// Project version.
 	gitVersion string
 }
 
 // Verify config options are valid.
 func validateConfig(c config) error {
-	if c.nShaChars < 16 || c.nShaChars > 64 {
+	if c.hashLen < 16 || c.hashLen > 64 {
 		return errors.New("use between 16 and 64 sha256 characters")
 	}
 	if c.minTTL < 5*time.Second {
