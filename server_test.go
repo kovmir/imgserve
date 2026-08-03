@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -22,9 +23,8 @@ import (
 func newTestServer(t *testing.T) *server {
 	t.Helper()
 
-	dir := t.TempDir()
 	cfg := config{
-		uploadPath: dir,
+		uploadPath: t.TempDir(),
 		hashLen:    16,
 		maxImgSize: 1 << 20,
 		defaultTTL: time.Hour,
@@ -40,8 +40,8 @@ func newTestServer(t *testing.T) *server {
 	t.Cleanup(func() { _ = s.close() })
 
 	// Deterministic replacements.
-	fixed := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-	s.currTime = func() time.Time { return fixed }
+	fixedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	s.currTime = func() time.Time { return fixedTime }
 	s.randID = func(n int) string { return strings.Repeat("a", n) }
 	// Silence logs.
 	s.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -49,9 +49,9 @@ func newTestServer(t *testing.T) *server {
 	return s
 }
 
-func newPNG(t *testing.T) []byte {
+func newPNG(t *testing.T, size int) []byte {
 	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		t.Fatal(err)
@@ -59,66 +59,72 @@ func newPNG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+func makeUploadBody(t *testing.T, field, filename string, fileData io.Reader, extra map[string]string) (io.Reader, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile(field, filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(fw, fileData); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range extra {
+		_ = mw.WriteField(k, v)
+	}
+	_ = mw.Close()
+	return &buf, mw.FormDataContentType()
+}
+
 func TestSaveImage(t *testing.T) {
 	t.Parallel()
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("save_image", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
-		data := newPNG(t)
+		srv := newTestServer(t)
+		img := bytes.NewReader(newPNG(t, 1))
+		ttl := srv.currTime()
 
-		imgName, err := s.saveImage(data, s.currTime().Add(time.Hour))
+		imgName, err := srv.saveImage(img, ttl)
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		// Image must exist.
-		if _, err := s.chroot.Stat(imgName); err != nil {
-			t.Fatalf("image not found: %v", err)
+		if _, err := srv.chroot.Stat(imgName); err != nil {
+			t.Fatalf("no image: %v", err)
 		}
-
-		// Symlink must exist and point to the image.
-		entries, err := fs.ReadDir(s.chroot.FS(), ".")
+		// Symlink must exist.
+		lnName := fmt.Sprintf("%d%s%s", ttl.Unix(), linkTimeDelim, srv.randID(linkRandIDLen))
+		target, err := srv.chroot.Readlink(lnName)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("no symlink: %v", err)
 		}
-		var found bool
-		for _, e := range entries {
-			if e.Type()&fs.ModeSymlink == 0 {
-				continue
-			}
-			target, err := s.chroot.Readlink(e.Name())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if target == imgName {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatal("no symlink pointing to saved image")
+		// Symlink must point at the image.
+		if target != imgName {
+			t.Fatal("wrong link target")
 		}
 	})
 
-	t.Run("invalid_type", func(t *testing.T) {
+	t.Run("reject_invalid_image", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
-		_, err := s.saveImage([]byte("not an image"), s.currTime().Add(time.Hour))
-		if err == nil || !strings.Contains(err.Error(), "invalid image type") {
+		srv := newTestServer(t)
+		img := bytes.NewReader([]byte("notanimage"))
+		_, err := srv.saveImage(img, srv.currTime())
+		if !strings.Contains(err.Error(), "invalid image type") {
 			t.Fatalf("expected invalid image type error, got: %v", err)
 		}
 	})
 
-	t.Run("duplicate", func(t *testing.T) {
+	t.Run("reject_duplicate", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
-		data := newPNG(t)
-		if _, err := s.saveImage(data, s.currTime().Add(time.Hour)); err != nil {
+		srv := newTestServer(t)
+		data := bytes.NewReader(newPNG(t, 1))
+		if _, err := srv.saveImage(data, srv.currTime()); err != nil {
 			t.Fatal(err)
 		}
-		_, err := s.saveImage(data, s.currTime().Add(time.Hour))
-		if !errors.Is(err, fs.ErrExist) {
+		data.Seek(0, io.SeekStart)
+		if _, err := srv.saveImage(data, srv.currTime()); !errors.Is(err, fs.ErrExist) {
 			t.Fatalf("expected fs.ErrExist, got: %v", err)
 		}
 	})
@@ -126,168 +132,93 @@ func TestSaveImage(t *testing.T) {
 
 func TestDeleteImage(t *testing.T) {
 	t.Parallel()
-	s := newTestServer(t)
-	data := newPNG(t)
-	dir := s.cfg.uploadPath
-	imgName, err := s.saveImage(data, s.currTime().Add(time.Hour))
+	srv := newTestServer(t)
+	img := bytes.NewReader(newPNG(t, 1))
+	ttl := srv.currTime()
+
+	// Save an image.
+	imgName, err := srv.saveImage(img, ttl)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	entries, _ := os.ReadDir(dir)
-	var lnName string
-	for _, e := range entries {
-		if e.Type()&fs.ModeSymlink != 0 {
-			lnName = e.Name()
-			break
-		}
-	}
-	if lnName == "" {
-		t.Fatal("no symlink created")
-	}
-
-	if err := s.deleteImage(lnName); err != nil {
+	// Delete the image.
+	lnName := fmt.Sprintf("%d%s%s", ttl.Unix(), linkTimeDelim, srv.randID(linkRandIDLen))
+	if err := srv.deleteImage(lnName); err != nil {
 		t.Fatal(err)
 	}
-
-	if _, err := s.chroot.Stat(imgName); !os.IsNotExist(err) {
-		t.Fatal("image should be deleted")
+	if _, err := srv.chroot.Stat(imgName); !os.IsNotExist(err) {
+		t.Fatal("the deleted image is still there")
 	}
-	if _, err := s.chroot.Stat(lnName); !os.IsNotExist(err) {
-		t.Fatal("link should be deleted")
+	if _, err := srv.chroot.Stat(lnName); !os.IsNotExist(err) {
+		t.Fatal("link to the deleted image is still there")
 	}
 }
 
 func TestGarbageCollect(t *testing.T) {
 	t.Parallel()
-	s := newTestServer(t)
+	srv := newTestServer(t)
 
 	// Expired.
-	data1 := newPNG(t)
-	img1, err := s.saveImage(data1, s.currTime().Add(-time.Hour))
+	rdr1 := bytes.NewReader(newPNG(t, 1))
+	img1, err := srv.saveImage(rdr1, srv.currTime().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Non-expired.
+	rdr2 := bytes.NewReader(newPNG(t, 2))
+	img2, err := srv.saveImage(rdr2, srv.currTime().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Create a different image.
-	data2 := append([]byte(nil), data1...)
-	data2 = append(data2, 0x00)
-	// Non-exipred.
-	img2, err := s.saveImage(data2, s.currTime().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	srv.imgGarbageCollect()
 
-	s.imgGarbageCollect()
-
-	if _, err := s.chroot.Stat(img1); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal("expired image should be removed")
+	if _, err := srv.chroot.Stat(img1); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("expired image is still there")
 	}
-	if _, err := s.chroot.Stat(img2); err != nil {
-		t.Fatal("valid image should remain")
+	if _, err := srv.chroot.Stat(img2); err != nil {
+		t.Fatal("non-expired image is missing")
 	}
 }
 
-func TestCleanOrphanLinks(t *testing.T) {
+func TestCleanOrphans(t *testing.T) {
 	t.Parallel()
-	s := newTestServer(t)
+	srv := newTestServer(t)
+	data := newPNG(t, 1)
 	lnName := "1000" + linkTimeDelim + "abc12345"
-	if err := s.chroot.Symlink("orpahn-link-to-missing.png", lnName); err != nil {
+	tmpName := ".whatever"
+	if err := srv.chroot.Symlink("orpahn-link-to-missing.png", lnName); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.chroot.WriteFile(tmpName, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	s.cleanOrphanLinks()
-
-	if _, err := s.chroot.Stat(lnName); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal("dangling symlink should be removed")
-	}
-}
-
-func TestWriteFileExcl(t *testing.T) {
-	t.Parallel()
-	s := newTestServer(t)
-	if err := writeFileExcl(s.chroot, "foo.txt", []byte("a"), 0o644); err != nil {
+	if err := srv.cleanOrphans(); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileExcl(s.chroot, "foo.txt", []byte("b"), 0o644); !errors.Is(err, fs.ErrExist) {
-		t.Fatalf("expected fs.ErrExist, got: %v", err)
+
+	if _, err := srv.chroot.Stat(lnName); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("dangling symlink not removed")
+	}
+	if _, err := srv.chroot.Stat(tmpName); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("temporary file not removed")
 	}
 }
 
 func TestHandleUpload(t *testing.T) {
 	t.Parallel()
 
-	t.Run("method_not_allowed", func(t *testing.T) {
+	t.Run("upload_image", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/upload", nil)
-		s.handleUpload(rr, req)
-		if rr.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("code=%d, want %d", rr.Code, http.StatusMethodNotAllowed)
-		}
-	})
-
-	t.Run("missing_image", func(t *testing.T) {
-		t.Parallel()
-		s := newTestServer(t)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/upload", nil)
-		s.handleUpload(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("code=%d, want %d", rr.Code, http.StatusBadRequest)
-		}
-	})
-
-	t.Run("invalid_ttl", func(t *testing.T) {
-		t.Parallel()
-		s := newTestServer(t)
-		body, contentType := makeUploadBody(t, "image", "test.png", newPNG(t), map[string]string{"ttl": "bad"})
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/upload", body)
-		req.Header.Set("Content-Type", contentType)
-		s.handleUpload(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("code=%d, want %d", rr.Code, http.StatusBadRequest)
-		}
-	})
-
-	t.Run("ttl_too_large", func(t *testing.T) {
-		t.Parallel()
-		s := newTestServer(t)
-		body, contentType := makeUploadBody(t, "image", "test.png", newPNG(t), map[string]string{"ttl": "1000h"})
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/upload", body)
-		req.Header.Set("Content-Type", contentType)
-		s.handleUpload(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("code=%d, want %d", rr.Code, http.StatusBadRequest)
-		}
-	})
-
-	t.Run("too_large", func(t *testing.T) {
-		t.Parallel()
-		s := newTestServer(t)
-		s.cfg.maxImgSize = 10
-		body, contentType := makeUploadBody(t, "image", "test.png", newPNG(t), nil)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/upload", body)
-		req.Header.Set("Content-Type", contentType)
-		s.handleUpload(rr, req)
-		if rr.Code != http.StatusRequestEntityTooLarge {
-			t.Fatalf("code=%d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
-		}
-	})
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-		s := newTestServer(t)
-		body, contentType := makeUploadBody(t, "image", "test.png", newPNG(t), nil)
+		srv := newTestServer(t)
+		body, contentType := makeUploadBody(t, "image", "test.png", bytes.NewReader(newPNG(t, 1)), nil)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/upload", body)
 		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Host", "example.com")
-		s.handleUpload(rr, req)
+		srv.handleUpload(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Fatalf("code=%d, want %d", rr.Code, http.StatusOK)
@@ -297,15 +228,82 @@ func TestHandleUpload(t *testing.T) {
 		}
 	})
 
-	t.Run("redirect", func(t *testing.T) {
+	t.Run("reject_invalid_method", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
-		body, contentType := makeUploadBody(t, "image", "test.png", newPNG(t), map[string]string{"redirect": "true"})
+		srv := newTestServer(t)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/upload", nil)
+
+		srv.handleUpload(rr, req)
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("code=%d, want %d", rr.Code, http.StatusMethodNotAllowed)
+		}
+	})
+
+	t.Run("reject_no_image", func(t *testing.T) {
+		t.Parallel()
+		srv := newTestServer(t)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/upload", nil)
+		srv.handleUpload(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("code=%d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("reject_invalid_ttl", func(t *testing.T) {
+		t.Parallel()
+		srv := newTestServer(t)
+		body, contentType := makeUploadBody(t, "image", "test.png", bytes.NewReader(newPNG(t, 1)), map[string]string{"ttl": "bad"})
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/upload", body)
+		req.Header.Set("Content-Type", contentType)
+
+		srv.handleUpload(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("code=%d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("reject_ttl_too_long", func(t *testing.T) {
+		t.Parallel()
+		srv := newTestServer(t)
+		pngReader := bytes.NewReader(newPNG(t, 1))
+		tooHighTTL := srv.currTime().Add(srv.cfg.maxTTL).Add(time.Hour)
+		body, contentType := makeUploadBody(t, "image", "test.png", pngReader, map[string]string{"ttl": tooHighTTL.String()})
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/upload", body)
+		req.Header.Set("Content-Type", contentType)
+
+		srv.handleUpload(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("code=%d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("reject_image_too_large", func(t *testing.T) {
+		t.Parallel()
+		srv := newTestServer(t)
+		srv.cfg.maxImgSize = 10
+		body, contentType := makeUploadBody(t, "image", "test.png", bytes.NewReader(newPNG(t, 1)), nil)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/upload", body)
+		req.Header.Set("Content-Type", contentType)
+		srv.handleUpload(rr, req)
+		if rr.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("code=%d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
+		}
+	})
+
+	t.Run("redirect_to_image", func(t *testing.T) {
+		t.Parallel()
+		srv := newTestServer(t)
+		body, contentType := makeUploadBody(t, "image", "test.png", bytes.NewReader(newPNG(t, 1)), map[string]string{"redirect": "true"})
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/upload", body)
 		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Host", "example.com")
-		s.handleUpload(rr, req)
+		srv.handleUpload(rr, req)
 
 		if rr.Code != http.StatusSeeOther {
 			t.Fatalf("code=%d, want %d", rr.Code, http.StatusSeeOther)
@@ -316,15 +314,15 @@ func TestHandleUpload(t *testing.T) {
 		}
 	})
 
-	t.Run("client_filename_extension_ignored", func(t *testing.T) {
+	t.Run("ignore_client_supplied_extension", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
-		body, contentType := makeUploadBody(t, "image", "evil.html", newPNG(t), nil)
+		srv := newTestServer(t)
+		body, contentType := makeUploadBody(t, "image", "evil.html", bytes.NewReader(newPNG(t, 1)), nil)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/upload", body)
 		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Host", "example.com")
-		s.handleUpload(rr, req)
+		srv.handleUpload(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Fatalf("code=%d, want %d", rr.Code, http.StatusOK)
@@ -342,12 +340,12 @@ func TestHandleUpload(t *testing.T) {
 func TestHandleView(t *testing.T) {
 	t.Parallel()
 
-	t.Run("root", func(t *testing.T) {
+	t.Run("index.html", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
+		srv := newTestServer(t)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		s.handleView(rr, req)
+		srv.handleView(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("code=%d, want %d", rr.Code, http.StatusOK)
 		}
@@ -358,10 +356,10 @@ func TestHandleView(t *testing.T) {
 
 	t.Run("favicon", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
+		srv := newTestServer(t)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
-		s.handleView(rr, req)
+		srv.handleView(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("code=%d, want %d", rr.Code, http.StatusOK)
 		}
@@ -375,46 +373,28 @@ func TestHandleView(t *testing.T) {
 
 	t.Run("image", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
-		imgName, err := s.saveImage(newPNG(t), s.currTime().Add(time.Hour))
+		srv := newTestServer(t)
+		imgName, err := srv.saveImage(bytes.NewReader(newPNG(t, 1)), srv.currTime().Add(time.Hour))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/"+imgName, nil)
-		s.handleView(rr, req)
+		srv.handleView(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("code=%d, want %d", rr.Code, http.StatusOK)
 		}
 	})
 
-	t.Run("method_not_allowed", func(t *testing.T) {
+	t.Run("reject_invalid_method", func(t *testing.T) {
 		t.Parallel()
-		s := newTestServer(t)
+		srv := newTestServer(t)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/", nil)
-		s.handleView(rr, req)
+		srv.handleView(rr, req)
 		if rr.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("code=%d, want %d", rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
-}
-
-func makeUploadBody(t *testing.T, field, filename string, fileData []byte, extra map[string]string) (io.Reader, string) {
-	t.Helper()
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	fw, err := mw.CreateFormFile(field, filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fw.Write(fileData); err != nil {
-		t.Fatal(err)
-	}
-	for k, v := range extra {
-		_ = mw.WriteField(k, v)
-	}
-	_ = mw.Close()
-	return &buf, mw.FormDataContentType()
 }

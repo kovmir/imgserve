@@ -54,7 +54,9 @@ func run(cfg config) error {
 	defer s.close()
 
 	if cfg.cleanUpImages {
-		s.cleanOrphanLinks()
+		if err := s.cleanOrphans(); err != nil {
+			return err
+		}
 		go s.gcLoop(cfg.imageCleanUpDelay)
 	}
 

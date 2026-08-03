@@ -21,7 +21,10 @@ import (
 	"time"
 )
 
-const linkTimeDelim = "_"
+const (
+	linkTimeDelim = "_"
+	linkRandIDLen = 16
+)
 
 type server struct {
 	cfg config
@@ -77,22 +80,9 @@ func (s *server) handler() http.Handler {
 	return mux
 }
 
-// os.Root.WriteFile with O_EXCL for atomic file creation without overrides.
-func writeFileExcl(r *os.Root, name string, data []byte, perm os.FileMode) error {
-	f, err := r.OpenFile(name, os.O_EXCL|os.O_WRONLY|os.O_CREATE, perm)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	if err1 := f.Close(); err == nil {
-		err = err1
-	}
-	return err
-}
-
 // Save uploaded image on disk and create a symlink with TTL in the name
 // pointing at it.
-func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, error) {
+func (s *server) saveImage(data io.Reader, ttl time.Time) (string, error) {
 	allowedTypes := map[string]bool{
 		"image/jpeg": true,
 		"image/png":  true,
@@ -102,7 +92,12 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 		"image/tiff": true,
 		"image/avif": true,
 	}
-	contentType := http.DetectContentType(imgData)
+	// Peek at the first 512 bytes to detect content type.
+	head, err := io.ReadAll(io.LimitReader(data, 512))
+	if err != nil {
+		return "", err
+	}
+	contentType := http.DetectContentType(head)
 	if !allowedTypes[contentType] {
 		return "", errors.New("invalid image type")
 	}
@@ -111,29 +106,36 @@ func (s *server) saveImage(imgData []byte, imgExpiresAt time.Time) (string, erro
 		return "", errors.New("invalid image type")
 	}
 	imgExt := exts[0]
-	// Calculate image checksum.
-	imgHash := fmt.Sprintf("%x", sha256.Sum256(imgData))[:s.cfg.hashLen]
-	// Checksum will be the name of the image to avoid duplicate uploads.
-	imgName := imgHash + imgExt
 
-	// Create a symlink pointing to the image. The link holds expiration
-	// timestamp in the name and random characters to avoid naming
-	// collisions.
-	lnName := fmt.Sprintf("%d%s%s", imgExpiresAt.Unix(), linkTimeDelim, s.randID(8))
+	// Stream file to disk and compute checksum.
+	tmpName := "." + s.randID(16) + "_upload"
+	tmpFile, err := s.chroot.OpenFile(tmpName, os.O_EXCL|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		tmpFile.Close()
+		s.chroot.Remove(tmpName)
+	}()
+	hasher := sha256.New()
+	src := io.MultiReader(bytes.NewReader(head), data)
+	dst := io.MultiWriter(tmpFile, hasher)
+	if _, err := io.Copy(dst, src); err != nil {
+		return "", err
+	}
+
+	imgHash := fmt.Sprintf("%x", hasher.Sum(nil))[:s.cfg.hashLen]
+	imgName := imgHash + imgExt
+	lnName := fmt.Sprintf("%d%s%s", ttl.Unix(), linkTimeDelim, s.randID(linkRandIDLen))
+	// Create a symlink to the image holding TTL in the name.
 	if err := s.chroot.Symlink(imgName, lnName); err != nil {
 		return "", err
 	}
-
-	// At this point the server may crash, leaving the dangling symlink
-	// behind. That's fine, because the server will take care of it on
-	// restart.
-
-	// Save the image on disk.
-	if err := writeFileExcl(s.chroot, imgName, imgData, 0o644); err != nil {
-		// Could not save the image, so remove the dangling symlink.
-		_ = s.chroot.Remove(lnName)
+	// Hardlink temporary file to the image name.
+	if err := s.chroot.Link(tmpName, imgName); err != nil {
 		return "", err
 	}
+
 	s.logger.Info("image saved", "link", lnName, "target", imgName)
 	return imgName, nil
 }
@@ -193,29 +195,36 @@ func (s *server) imgGarbageCollect() {
 	}
 }
 
-// Clean up dangling symlinks after a possible server crash.
-func (s *server) cleanOrphanLinks() {
+// Clean up dangling symlinks and temporary upload files after a server crash.
+func (s *server) cleanOrphans() error {
 	entries, err := fs.ReadDir(s.chroot.FS(), ".")
 	if err != nil {
-		s.logger.Error("unable to read upload directory", "dir", s.cfg.uploadPath, "err", err)
-		return
+		return err
 	}
 	for _, entry := range entries {
-		if entry.Type()&fs.ModeSymlink == 0 {
-			continue // Not a link.
+		// Links.
+		if entry.Type()&fs.ModeSymlink != 0 {
+			lnName := entry.Name()
+			_, err := s.chroot.Stat(lnName)
+			if errors.Is(err, fs.ErrNotExist) {
+				// Dangling link.
+				if err := s.chroot.Remove(lnName); err != nil {
+					return err
+				}
+				continue
+			}
+			if err != nil {
+				return err
+			}
 		}
-		lnName := entry.Name()
-		_, err := s.chroot.Stat(lnName)
-		if errors.Is(err, fs.ErrNotExist) {
-			// Dangling link.
-			_ = s.chroot.Remove(lnName)
-			continue
-		}
-		if err != nil {
-			// Unknown error.
-			s.logger.Error("unable to resolve link", "link", lnName, "err", err)
+		// Temporary upload files.
+		if entry.Name()[0] == '.' {
+			if err := s.chroot.Remove(entry.Name()); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // Handle server upload requests.
@@ -230,43 +239,47 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logger.Info("incoming request", "method", r.Method, "path", r.URL.Path, "ip", realIP)
 
-	// Read the incoming image from the form.
+	// Read the data from the form.
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.maxImgSize)
-	file, _, err := r.FormFile("image")
-	if err != nil {
+	if err := r.ParseMultipartForm(64 << 10); err != nil { // 64KiB
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			http.Error(w, "Too large", http.StatusRequestEntityTooLarge)
 			return
 		}
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	// Read image.
+	file, _, err := r.FormFile("image")
+	if err != nil {
 		http.Error(w, "No \"image\" key in the POST form.", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
-
-	// Determine the image TTL.
+	// Read TTL.
 	formTTL := r.FormValue("ttl")
+
+	var ttl time.Duration
 	if formTTL == "" {
-		formTTL = s.cfg.defaultTTL.String()
-	}
-	ttl, err := time.ParseDuration(formTTL)
-	if err != nil {
-		http.Error(w, "Invalid TTL.", http.StatusBadRequest)
-		return
-	}
-	if ttl > s.cfg.maxTTL || ttl < s.cfg.minTTL {
-		http.Error(w, "Invalid TTL.", http.StatusBadRequest)
-		return
+		// Set default TTL.
+		ttl = s.cfg.defaultTTL
+	} else {
+		// Parse and validate TTL.
+		duration, err := time.ParseDuration(formTTL)
+		if err != nil {
+			http.Error(w, "Invalid TTL.", http.StatusBadRequest)
+			return
+		}
+		if duration > s.cfg.maxTTL || duration < s.cfg.minTTL {
+			http.Error(w, "Invalid TTL.", http.StatusBadRequest)
+			return
+		}
+		ttl = duration
 	}
 
-	// Save the image on disk.
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, file); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		s.logger.Error("unable to read from multipart/form-data", "err", err)
-		return
-	}
-	imgName, err := s.saveImage(buf.Bytes(), s.currTime().Add(ttl))
+	// Save image on disk.
+	imgName, err := s.saveImage(file, s.currTime().Add(ttl))
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			http.Error(w, "Already there", http.StatusConflict)
@@ -292,7 +305,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	url := fmt.Sprintf("%s://%s/%s", scheme, host, imgName)
 
 	if r.FormValue("redirect") == "true" {
-		// Redirecto to the image.
+		// Redirect to the image.
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	} else {
 		// Reply with the image URL.
