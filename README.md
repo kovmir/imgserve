@@ -1,7 +1,5 @@
 # imgserve
 
-[![builds.sr.ht status](https://builds.sr.ht/~kovmir/imgserve.svg)](https://builds.sr.ht/~kovmir/imgserve?)
-
 Minimalist image hosting server.
 
 * No dependencies

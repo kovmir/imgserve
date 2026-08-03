@@ -1,7 +1,0 @@
-image: alpine/edge
-packages:
-  - go
-tasks:
-  - test: |
-      go version
-      make -C imgserve test
