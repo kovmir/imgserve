@@ -1,6 +1,6 @@
 # imgserve
 
-Minimalist image hosting server.
+Fast and minimal image hosting server.
 
 * No dependencies
 * No database
@@ -8,13 +8,11 @@ Minimalist image hosting server.
 * Image [TTL](https://en.wikipedia.org/wiki/Time_to_live)
 * Image deduplication
 
-TLS, authentication, and rate limiting should be handled by a reverse proxy.
-
 # PREVIEW
 
 ![screenshot](screenshot.png)
 
-*Stylish web UI following modern design guidelines.*
+*Stylish '90s web UI*
 
 # INSTALL
 
@@ -30,8 +28,7 @@ sudo make install
 # USAGE
 
 ```bash
-imgserve -h # To see all CLI options.
-imgserve # Simply run the executable to start the server.
+imgserve # Simply run the executable.
 ```
 
 Upload images via web UI at `http://localhost:8077/` or `curl`:
@@ -43,5 +40,6 @@ curl -X POST -F "image=@/path/to/image.jpg" -F "ttl=24h" http://localhost:8077/u
 
 TTL format is documented [here](https://pkg.go.dev/time#ParseDuration).
 
+TLS, authentication, and rate limiting should be handled by a reverse proxy.
 Proxy server should set `X-Forwarded-Host`, `X-Forwarded-Proto`, and
 `X-Real-IP`.
